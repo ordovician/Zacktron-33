@@ -50,16 +50,6 @@ Script language style implementation and thinking don't work well in Zig, you go
 - Spent a lot of time looking through the Zig source code to understand how `std.StringHashMap` deals with its string keys. Are they automatically deleted when `deinit()` is called?  No Zig does not duplicate strings used as keys. It is your responsibility to deallocate the strings keys. In retrospect this makes sense. Zig is staying low level and doing minimal convieniences for you. That is sort of the point. There is no RAII in Zig, so just deleting stuff automatically would not have been a good idea anyway. 
 
 ## Status November 8th 2020
-This is still work in progress. At this point I am really only doing the parsing and building up a 4 decimal digit integer value `instruction` to contain the result from parsing individual lines. Thus far I am not storing this `instruction` anywhere.
-
-I have only progressed on dealing with labels and dealing with very regular instructions, such as: 
-
-    SUB x3, x1, x2
-        
-But instructions which are more irregular because they include e.g. labels are not handled yet:
-
-    BGT x3, first
-    
-Pseudo instructions, which are really just one of the standard instructions written in a different form are only partially handled. Psedo instructions like `DEC` which are really just `SUBI` where we subtract 1, is easy to represent. But insturctions where the registers are always 0, are harder since that is kind of implied in how I encode them.
+Not all programs will assemble as the psedo instructions are not all properly handled. There is currently know disassembler and the assembly process only offers output to stdout. Later I want to support writing results to a file of choosing.
 
     
