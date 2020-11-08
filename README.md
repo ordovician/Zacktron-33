@@ -53,6 +53,7 @@ Script language style implementation and thinking don't work well in Zig, you go
 This is still work in progress. At this point I am really only doing the parsing and building up a 4 decimal digit integer value `instruction` to contain the result from parsing individual lines. Thus far I am not storing this `instruction` anywhere.
 
 I have only progressed on dealing with labels and dealing with very regular instructions, such as: 
+
     SUB x3, x1, x2
         
 But instructions which are more irregular because they include e.g. labels are not handled yet:
