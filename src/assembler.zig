@@ -20,7 +20,7 @@ const ParseError = error{
     IllegalRegisterName,
 };
 
-const Opcode = enum(u32) {
+const Opcode = enum(i32) {
     HLT = 0,
     ADD = 1000,
     SUB = 2000,
@@ -58,30 +58,33 @@ const Opcode = enum(u32) {
                 return op;
             }
         }
+        if (ascii.eqlIgnoreCase("BRA", str))
+            return .BRZ;
         return ParseError.UnknownOpcode;
     }
 };
 
-fn readSymTable(allocator: *Allocator, file: File) !Dict(u16) {
+fn readSymTable(allocator: *Allocator, file: File) !Dict(i16) {
     const reader = file.reader();
-    var labels = Dict(u16).init(allocator);
+    var labels = Dict(i16).init(allocator);
     errdefer labels.deinit();
-    var address: u16 = 0;
+    var address: i16 = 0;
 
     var buffer: [500]u8 = undefined;
-    while (try reader.readUntilDelimiterOrEof(buffer[0..], '\n')) |line| {
-        var iter = mem.split(line, " ");
-        if (iter.next()) |label| {
-            if (label.len > 0 and label[label.len - 1] == ':') {
-                const duplabel = try mem.dupe(allocator, u8, label);
-                try labels.put(duplabel, address);
-            } else {
-                address += 1;
-                continue;
-            }
+    while (try reader.readUntilDelimiterOrEof(buffer[0..], '\n')) |tmp_line| {
+        const line = mem.trim(u8, tmp_line, " \t");
+        const n = line.len;
+
+        if (n == 0) continue;
+
+        if (mem.indexOf(u8, line, ":")) |i| {
+            const label = try mem.dupe(allocator, u8, line[0..i]);
+            try labels.put(label, address);
+
+            // is there anything beyond the label?
+            if (n == i + 1) continue;
         }
-        if (iter.next()) |_|
-            address += 1;
+        address += 1;
     }
 
     return labels;
@@ -103,42 +106,56 @@ fn assemble(allocator: *Allocator, file: File) !void {
 
     try file.seekTo(0);
     const reader = file.reader();
+    var lineno: i32 = 0;
 
     var buffer: [500]u8 = undefined;
+
+    // Read each line in source code file
     while (try reader.readUntilDelimiterOrEof(buffer[0..], '\n')) |tmp_line| {
+        lineno += 1;
         const line = mem.trim(u8, tmp_line, " \t");
+        // debug("{}: {} -> ", .{ lineno, line });
+
         if (line.len == 0) continue;
         var iter = mem.tokenize(line, " ,");
 
         var state: State = .mnemonic;
-        var instruction: u32 = 0;
-        var opscale: u32 = 100; // scaling factor for operand.
+        var instruction: i32 = -1;
+        var opscale: i32 = 100; // scaling factor for operand.
 
+        // Process each part of the instruction on a line
         while (iter.next()) |word| {
             const n = word.len;
             switch (state) {
                 .mnemonic => if (word[n - 1] != ':') {
                     state = .operands;
                     const opcode = Opcode.fromString(word) catch |err| {
-                        try stderr.print("Could not pase mnemonic: {}\n", .{line});
+                        try stderr.print("{}: Could not parse mnemonic: {}\n", .{ lineno, line });
                         return err;
                     };
                     instruction = @enumToInt(opcode);
                 },
-                .operands => if (n == 2 and ascii.isDigit(word[1])) {
-                    instruction += opscale * (word[1] - '0');
+                .operands => if (labels.get(word)) |addr| {
+                    instruction += addr;
+                    state = .comment;
+                } else if (n == 2 and ascii.isDigit(word[1])) {
+                    instruction += opscale * @as(i32, (word[1] - '0'));
                     if (opscale <= 1) {
                         state = .comment;
                     } else {
-                        opscale /= 10;
+                        opscale = @divTrunc(opscale, 10);
                     }
                 } else {
-                    try stderr.print("Ivalid register name: {}\n", .{word});
+                    try stderr.print("{}: Invalid register name or unknown label: {}\n", .{ lineno, word });
+                    // debug("Addr: {}\n", .{labels.get("first")});
+
                     return ParseError.IllegalRegisterName;
                 },
                 .comment => break,
             }
         }
+        if (instruction >= 0)
+            try stdout.print("{}\n", .{instruction});
     }
 
     // var iter = labels.iterator();
@@ -166,8 +183,6 @@ pub fn main() !void {
 
     try assembleFile(allocator, "examples/maximizer.ct33");
 
-    // const op: Opcode = .ADD;
-    try stdout.print("Opcode: {}\n", .{Opcode.fromString("hLto")});
     // const reader = file.reader();
     //
     // var labels = try readSymTable(allocator, reader);
