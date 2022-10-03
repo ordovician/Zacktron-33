@@ -1,10 +1,10 @@
 # Zacktron-33, The Decimal RISC CPU
 
-This is an assembler, disassembler and simulator for an imaginary CPU called Calcutron-33. The rational for this CPU was described first time in [this medium article](https://medium.com/@Jernfrost/decimal-risc-cpu-a13968922812). The original version of this was written in Julia and this is really an excercise in learning and using the Zig programming language. To not confused the Zig version from the Julia version I a calling this the Zacktron-33.
+This is an assembler, disassembler and simulator for an imaginary CPU called Calcutron-33. The rational for this CPU was described first time in [this medium article](https://medium.com/@Jernfrost/decimal-risc-cpu-a13968922812). The original version of this was written in Julia and this is really an exercise in learning and using the Zig programming language. To not confused the Zig version from the Julia version I a calling this the Zacktron-33.
 
 ## Example
 
-This is a simple example of the assembly language. In this example we are repeately reading two input numbers, multiplying them and writing the result to output.
+This is a simple example of the assembly language. In this example we are repeatedly reading two input numbers, multiplying them and writing the result to output.
 
     loop:
         INP x1
@@ -50,6 +50,6 @@ Script language style implementation and thinking don't work well in Zig, you go
 - Spent a lot of time looking through the Zig source code to understand how `std.StringHashMap` deals with its string keys. Are they automatically deleted when `deinit()` is called?  No Zig does not duplicate strings used as keys. It is your responsibility to deallocate the strings keys. In retrospect this makes sense. Zig is staying low level and doing minimal convieniences for you. That is sort of the point. There is no RAII in Zig, so just deleting stuff automatically would not have been a good idea anyway. 
 
 ## Status November 8th 2020
-Not all programs will assemble as the psedo instructions are not all properly handled. There is currently know disassembler and the assembly process only offers output to stdout. Later I want to support writing results to a file of choosing.
+Not all programs will assemble as the pseudo instructions are not all properly handled. There is currently know disassembler and the assembly process only offers output to stdout. Later I want to support writing results to a file of choosing.
 
     

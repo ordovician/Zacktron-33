@@ -64,8 +64,9 @@ const Opcode = enum(i32) {
     }
 };
 
-fn readSymTable(allocator: *Allocator, file: File) !Dict(i16) {
+fn readSymTable(allocator: Allocator, file: File) !Dict(i16) {
     const reader = file.reader();
+
     var labels = Dict(i16).init(allocator);
     errdefer labels.deinit();
     var address: i16 = 0;
@@ -78,7 +79,7 @@ fn readSymTable(allocator: *Allocator, file: File) !Dict(i16) {
         if (n == 0) continue;
 
         if (mem.indexOf(u8, line, ":")) |i| {
-            const label = try mem.dupe(allocator, u8, line[0..i]);
+            const label = try allocator.dupe(u8, line[0..i]);
             try labels.put(label, address);
 
             // is there anything beyond the label?
@@ -96,11 +97,12 @@ const State = enum {
     comment,
 };
 
-fn assemble(allocator: *Allocator, file: File) !void {
+fn assemble(allocator: Allocator, file: File) !void {
     var labels = try readSymTable(allocator, file);
     defer {
         var iter = labels.iterator();
-        while (iter.next()) |entry| allocator.free(entry.key);
+        while (iter.next()) |entry|
+            allocator.free(entry.key_ptr.*);
         labels.deinit();
     }
 
@@ -117,7 +119,7 @@ fn assemble(allocator: *Allocator, file: File) !void {
         // debug("{}: {} -> ", .{ lineno, line });
 
         if (line.len == 0) continue;
-        var iter = mem.tokenize(line, " ,");
+        var iter = mem.tokenize(u8, line, " ,");
 
         var state: State = .mnemonic;
         var instruction: i32 = -1;
@@ -130,7 +132,7 @@ fn assemble(allocator: *Allocator, file: File) !void {
                 .mnemonic => if (word[n - 1] != ':') {
                     state = .operands;
                     const opcode = Opcode.fromString(word) catch |err| {
-                        try stderr.print("{}: Could not parse mnemonic: {}\n", .{ lineno, line });
+                        try stderr.print("{d}: Could not parse mnemonic: {s}\n", .{ lineno, line });
                         return err;
                     };
                     instruction = @enumToInt(opcode);
@@ -146,7 +148,7 @@ fn assemble(allocator: *Allocator, file: File) !void {
                         opscale = @divTrunc(opscale, 10);
                     }
                 } else {
-                    try stderr.print("{}: Invalid register name or unknown label: {}\n", .{ lineno, word });
+                    try stderr.print("{d}: Invalid register name or unknown label: {s}\n", .{ lineno, word });
                     // debug("Addr: {}\n", .{labels.get("first")});
 
                     return ParseError.IllegalRegisterName;
@@ -159,13 +161,13 @@ fn assemble(allocator: *Allocator, file: File) !void {
     }
 
     // var iter = labels.iterator();
-    //
+    
     // while (iter.next()) |entry| {
-    //     try stdout.print("Key: {}, Value: {}\n", .{ entry.key, entry.value });
+    //     try stdout.print("Key: {s}, Value: {d}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
     // }
 }
 
-fn assembleFile(allocator: *Allocator, filename: []const u8) !void {
+fn assembleFile(allocator: Allocator, filename: []const u8) !void {
     const dir: Dir = std.fs.cwd();
     const file: File = try dir.openFile(
         filename,
@@ -179,7 +181,7 @@ fn assembleFile(allocator: *Allocator, filename: []const u8) !void {
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    var allocator = &gpa.allocator;
+    const allocator = gpa.allocator();
 
     try assembleFile(allocator, "examples/maximizer.ct33");
 
