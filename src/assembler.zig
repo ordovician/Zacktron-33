@@ -3,6 +3,8 @@ const std = @import("std");
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
 const io = std.io;
+const process = std.process;
+
 //const ArrayList = std.ArrayList;
 const fs = std.fs;
 const mem = std.mem;
@@ -193,18 +195,19 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    try assembleFile(allocator, "examples/maximizer.ct33", stdout);
+    const args = try process.argsAlloc(allocator);
+    defer process.argsFree(allocator, args);
 
-    // const reader = file.reader();
-    //
-    // var labels = try readSymTable(allocator, reader);
+    var filename: []const u8 = "examples/adder.ct33"[0..];
 
-    //
+    if (args.len == 2) {
+        filename = args[1];
+    } else {
+        try stderr.print("Usage: assembler filename\n", .{});
+        try stderr.print("\nAssembly of {s}:\n", .{filename});
+    }
 
-    // const content = try reader.readAllAlloc(allocator, 1024);
-    // defer allocator.free(content);
-    //
-    // try stdout.print("{}\n", .{content});
+    try assembleFile(allocator, filename, stdout);
 }
 
 // Tests
