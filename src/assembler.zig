@@ -2,7 +2,8 @@ const std = @import("std");
 
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
-
+const io = std.io;
+//const ArrayList = std.ArrayList;
 const fs = std.fs;
 const mem = std.mem;
 const ascii = std.ascii;
@@ -11,7 +12,6 @@ const File = fs.File;
 const Dir = fs.Dir;
 const Dict = std.StringHashMap;
 const Allocator = std.mem.Allocator;
-const Reader = std.io.Reader;
 
 const debug = std.debug.print;
 
@@ -97,14 +97,9 @@ const State = enum {
     comment,
 };
 
-fn assemble(allocator: Allocator, file: File) !void {
+fn assemble(allocator: Allocator, file: File, writer: anytype) !void {
     var labels = try readSymTable(allocator, file);
-    defer {
-        var iter = labels.iterator();
-        while (iter.next()) |entry|
-            allocator.free(entry.key_ptr.*);
-        labels.deinit();
-    }
+    defer releaseDict(allocator, &labels);
 
     try file.seekTo(0);
     const reader = file.reader();
@@ -142,6 +137,12 @@ fn assemble(allocator: Allocator, file: File) !void {
                     state = .comment;
                 } else if (n == 2 and ascii.isDigit(word[1])) {
                     instruction += opscale * @as(i32, (word[1] - '0'));
+                    
+                    // We reduce opscale by 10 on each iteration to place
+                    // digit representing register at correct position
+                    // SUB x3, x1, x2 turns into 2312
+                    // When word == "x3" we extract 3 and multiply by hundred to get right position
+                    // while when we get to word == "x1" we got to multiply by ten to get right position
                     if (opscale <= 1) {
                         state = .comment;
                     } else {
@@ -157,7 +158,7 @@ fn assemble(allocator: Allocator, file: File) !void {
             }
         }
         if (instruction >= 0)
-            try stdout.print("{}\n", .{instruction});
+            try writer.print("{}\n", .{instruction});
     }
 
     // var iter = labels.iterator();
@@ -175,7 +176,14 @@ fn assembleFile(allocator: Allocator, filename: []const u8) !void {
     );
     defer file.close();
 
-    try assemble(allocator, file);
+    try assemble(allocator, file, stdout);
+}
+
+fn releaseDict(allocator: Allocator, dict: *Dict(i16)) void {
+    var iter = dict.iterator();
+    while (iter.next()) |entry|
+        allocator.free(entry.key_ptr.*);
+    dict.deinit();    
 }
 
 pub fn main() !void {
@@ -195,4 +203,28 @@ pub fn main() !void {
     // defer allocator.free(content);
     //
     // try stdout.print("{}\n", .{content});
+}
+
+// Tests
+const expect = std.testing.expect;
+
+test "only labels" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    const dir: Dir = std.fs.cwd();
+    const file: File = try dir.openFile(
+         "testdata/labels-nocode.ct33",
+        .{ .read = true },
+    );
+    defer file.close();
+
+    var labels: Dict(i16) = try readSymTable(allocator, file);
+    defer releaseDict(allocator, &labels);
+
+    const keys = [_][]const u8{"alpha", "epsilon", "gamma", "delta", "beta"};
+    for (keys) |key| {
+        try expect(labels.contains(key));
+    }
 }
