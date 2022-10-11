@@ -58,8 +58,10 @@ const Opcode = enum(i32) {
                 return op;
             }
         }
-        if (ascii.eqlIgnoreCase("BRA", str))
+        if (ascii.eqlIgnoreCase("BRA", str)) {
             return .BRZ;
+        } else if (ascii.eqlIgnoreCase("CLR", str))
+            return .ADD; 
         return ParseError.UnknownOpcode;
     }
 };
@@ -168,7 +170,7 @@ fn assemble(allocator: Allocator, file: File, writer: anytype) !void {
     // }
 }
 
-fn assembleFile(allocator: Allocator, filename: []const u8) !void {
+fn assembleFile(allocator: Allocator, filename: []const u8, writer: anytype) !void {
     const dir: Dir = std.fs.cwd();
     const file: File = try dir.openFile(
         filename,
@@ -176,7 +178,7 @@ fn assembleFile(allocator: Allocator, filename: []const u8) !void {
     );
     defer file.close();
 
-    try assemble(allocator, file, stdout);
+    try assemble(allocator, file, writer);
 }
 
 fn releaseDict(allocator: Allocator, dict: *Dict(i16)) void {
@@ -191,7 +193,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    try assembleFile(allocator, "examples/maximizer.ct33");
+    try assembleFile(allocator, "examples/maximizer.ct33", stdout);
 
     // const reader = file.reader();
     //
@@ -209,9 +211,7 @@ pub fn main() !void {
 const expect = std.testing.expect;
 
 test "only labels" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = std.testing.allocator;
 
     const dir: Dir = std.fs.cwd();
     const file: File = try dir.openFile(
@@ -226,5 +226,52 @@ test "only labels" {
     const keys = [_][]const u8{"alpha", "epsilon", "gamma", "delta", "beta"};
     for (keys) |key| {
         try expect(labels.contains(key));
+    }
+}
+
+test "regression tests" {
+    const allocator = std.testing.allocator;
+    
+    const cwd = std.fs.cwd();
+    const dir: Dir = try cwd.openDir("testdata", .{.iterate = true});
+    //var binary_filename: [100]u8 = undefined;
+    var expected_buffer: [512]u8 = undefined;
+    var gotten_buffer: [512]u8 = undefined;
+
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        const filename: []const u8 = entry.name;
+        if (!mem.endsWith(u8, filename, ".ct33")) continue;
+
+        const binary_filename = try mem.replaceOwned(u8, allocator, filename, "ct33", "machine");
+        defer allocator.free(binary_filename);
+
+        // const binaryfile: File = try dir.openFile(binaryfile, .{.read = true});
+        const expected: []const u8 = dir.readFile(binary_filename, expected_buffer[0..]) catch {
+            // try stderr.print("Couldn't open file {s} because {}\n", .{binary_filename, err});
+            continue;
+        };
+        
+        var source = io.StreamSource{ 
+            .buffer = io.fixedBufferStream(&gotten_buffer)
+        };
+
+        const srcfile: File = dir.openFile(filename, .{ .read = true }) catch |err| {
+            try stderr.print("Couldn't open file {s} because {}\n", .{filename, err});
+            return err;
+        };        
+        defer srcfile.close();
+        assemble(allocator, srcfile, source.writer()) catch |err| {
+            try stderr.print("Assemble of {s} failed because of {}\n", .{filename, err});
+            return err;
+        };
+
+        const gotten = source.buffer.getWritten();
+        expect(mem.eql(u8, gotten, expected)) catch |err| {
+            try stderr.print("{s} got:\n{s}\n", .{filename, gotten});
+            try stderr.print("{s} expected:\n{s}\n", .{binary_filename, expected});
+            return err;
+        };
+        // try stdout.print("{s}\n", .{filename});
     }
 }
