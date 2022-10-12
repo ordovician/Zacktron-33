@@ -69,12 +69,12 @@ const Opcode = enum(i32) {
 };
 
 /// A table containing the memory address of labels in the code
-fn readSymTable(allocator: Allocator, file: File) !Dict(i16) {
+fn readSymTable(allocator: Allocator, file: File) !Dict(u8) {
     const reader = file.reader();
 
-    var labels = Dict(i16).init(allocator);
+    var labels = Dict(u8).init(allocator);
     errdefer labels.deinit();
-    var address: i16 = 0;
+    var address: u8 = 0;
 
     var buffer: [500]u8 = undefined;
     while (try reader.readUntilDelimiterOrEof(buffer[0..], '\n')) |tmp_line| {
@@ -102,57 +102,52 @@ const State = enum {
 };
 
 /// Turn single line of assembly code into an instruction
-fn assembleLine(labels: Dict(i16), line: []const u8) ParseError!?i32 {
-    // debug("{}: {} -> ", .{ lineno, line });
+fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
+    var code = mem.trim(u8, line, " \t");
+    var i = mem.indexOf(u8, code, "//") orelse code.len;
+    code = code[0..i];
 
-    if (line.len == 0) return null;
-    var iter = mem.tokenize(u8, line, " ,");
+    const n = code.len;
+    if (n == 0 or code[n - 1] == ':') return null;
 
-    var opscale: i32 = 100; // scaling factor for operand.
-    
-    // Make sure that we got at least an opcode. If we don't
-    // return null
-    var instruction: i32 = undefined;
-    if (iter.next()) |word| {
-        const n = word.len;
-        if (word[n - 1] == ':')
-            return null;
-        
-        const opcode = try Opcode.fromString(word);
-        instruction = @enumToInt(opcode);    
-    } else {
-        return null;
-    }
+    i = mem.indexOfScalar(u8, code, ' ') orelse n;
+    const mnemonic = code[0..i];
 
-    var state: State = .operands;
+    var iter = mem.tokenize(u8, code[i..], " ,");
+    var registers = Array(u8).init(alloc);
+    defer registers.deinit();
 
-    // Process each part of the instruction on a line
-    while (iter.next()) |word| {
-        const n = word.len;
-        switch (state) {
-            .operands => if (labels.get(word)) |addr| {
-                instruction += addr;
-                state = .comment;
-            } else if (n == 2 and ascii.isDigit(word[1])) {
-                instruction += opscale * @as(i32, (word[1] - '0'));
-                
-                // We reduce opscale by 10 on each iteration to place
-                // digit representing register at correct position
-                // SUB x3, x1, x2 turns into 2312
-                // When word == "x3" we extract 3 and multiply by hundred to get right position
-                // while when we get to word == "x1" we got to multiply by ten to get right position
-                if (opscale <= 1) {
-                    state = .comment;
-                } else {
-                    opscale = @divTrunc(opscale, 10);
-                }
-            } else {
-                // debug("Addr: {}\n", .{labels.get("first")});
-                return ParseError.IllegalRegisterName;
-            },
-            .comment => break,
+    var address: ?u8 = null; // address of a label
+
+
+    while (iter.next()) |operand| {
+        if (labels.get(operand)) |addr| {
+            address = addr;    
+        }
+        else if (operand.len == 2 and ascii.isDigit(operand[1])) {
+            try registers.append(operand[1] - '0');
+        } else {
+            return ParseError.IllegalRegisterName;
         }
     }
+
+    const opcode = try Opcode.fromString(mnemonic);
+    var instruction: i32 = @enumToInt(opcode); 
+    const regs = registers.items;
+
+    if (regs.len >= 1)
+        instruction += @as(i32, regs[0]) * 100;
+    if (regs.len == 3) {
+        instruction += regs[1] * 10;
+        instruction += regs[2];
+    }
+    if (address) |addr| {
+        instruction += addr;
+    } else if (regs.len < 3) {
+        instruction += regs[0] * 10;
+        if (regs.len == 2) instruction += regs[1];
+    }
+    
     return instruction;
 }
 
@@ -172,7 +167,7 @@ fn assemble(allocator: Allocator, file: File, writer: anytype) !void {
     while (try reader.readUntilDelimiterOrEof(buffer[0..], '\n')) |tmp_line| {
         lineno += 1;
         const line = mem.trim(u8, tmp_line, " \t");
-        const maybeInstruction: ?i32 = assembleLine(labels, line) catch |err| {
+        const maybeInstruction: ?i32 = assembleLine(allocator, labels, line) catch |err| {
             switch (err) {
                 ParseError.IllegalRegisterName => try stderr.print("{d}: Invalid register name or unknown label: {s}\n", .{ lineno, line }),
                 ParseError.UnknownOpcode => try stderr.print("{d}: Could not parse mnemonic: {s}\n", .{ lineno, line }),
@@ -198,7 +193,7 @@ fn assembleFile(allocator: Allocator, filename: []const u8, writer: anytype) !vo
     try assemble(allocator, file, writer);
 }
 
-fn releaseDict(allocator: Allocator, dict: *Dict(i16)) void {
+fn releaseDict(allocator: Allocator, dict: *Dict(u8)) void {
     var iter = dict.iterator();
     while (iter.next()) |entry|
         allocator.free(entry.key_ptr.*);
@@ -228,53 +223,6 @@ pub fn main() !void {
 // Tests
 const expect = std.testing.expect;
 
-fn parse(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
-    var code = mem.trim(u8, line, " \t");
-    var i = mem.indexOf(u8, code, "//") orelse code.len;
-    code = code[0..i];
-
-    const n = code.len;
-    if (code[n - 1] == ':') return null;
-
-    i = mem.indexOfScalar(u8, code, ' ') orelse n;
-    const mnemonic = code[0..i];
-
-    var iter = mem.tokenize(u8, code[i..], " ,");
-    var registers = Array(u8).init(alloc);
-    defer registers.deinit();
-
-    var address: ?u8 = null; // address of a label
-
-
-    while (iter.next()) |operand| {
-        if (labels.get(operand)) |addr| {
-            address = addr;    
-        }
-        else if (operand.len == 2 and ascii.isDigit(operand[1])) {
-            try registers.append(operand[1] - '0');
-        }
-    }
-
-    const opcode = try Opcode.fromString(mnemonic);
-    var instruction: i32 = @enumToInt(opcode); 
-    const regs = registers.items;
-
-    if (regs.len >= 1)
-        instruction += @as(i32, regs[0]) * 100;
-    if (regs.len == 3) {
-        instruction += regs[1] * 10;
-        instruction += regs[2];
-    }
-    if (address) |addr| {
-        instruction += addr;
-    } else if (regs.len < 3) {
-        instruction += regs[0] * 10;
-        instruction += regs[1];
-    }
-    
-    return instruction;
-}
-
 test "string operations" {
     const allocator = std.testing.allocator;
 
@@ -286,7 +234,7 @@ test "string operations" {
     try labels.put("foo", 42);
     try labels.put("bar", 88);
 
-    const maybe = try parse(allocator, labels, line);
+    const maybe = try assembleLine(allocator, labels, line);
     if (maybe) |instruction| {
         debug("Parse of {s} = {}\n", .{line, instruction});
     }
@@ -294,7 +242,7 @@ test "string operations" {
 
 test "individual instructions" {
     const allocator = std.testing.allocator;
-    var labels = Dict(i16).init(allocator);
+    var labels = Dict(u8).init(allocator);
 
     const lines = [_][]const u8{
         "ADD x3, x1", 
@@ -303,12 +251,12 @@ test "individual instructions" {
     };
 
     for (lines) |line| {
-        const maybeInst: ?i32 = try assembleLine(labels, line);
+        const maybeInst: ?i32 = try assembleLine(allocator, labels, line);
         const instruction = maybeInst orelse continue;
         try stdout.print("{s} : {}\n", .{line, instruction});
     }
 
-    const instruction = (try assembleLine(labels, "ADD x3, x1")).?;
+    const instruction = (try assembleLine(allocator, labels, "ADD x3, x1")).?;
     try stdout.print("ADD x3, x1 : {}\n", .{instruction});
 }
 
@@ -322,7 +270,7 @@ test "only labels" {
     );
     defer file.close();
 
-    var labels: Dict(i16) = try readSymTable(allocator, file);
+    var labels: Dict(u8) = try readSymTable(allocator, file);
     defer releaseDict(allocator, &labels);
 
     const keys = [_][]const u8{"alpha", "epsilon", "gamma", "delta", "beta"};
@@ -331,49 +279,49 @@ test "only labels" {
     }
 }
 
-// test "regression tests" {
-//     const allocator = std.testing.allocator;
+test "regression tests" {
+    const allocator = std.testing.allocator;
     
-//     const cwd = std.fs.cwd();
-//     const dir: Dir = try cwd.openDir("testdata", .{.iterate = true});
-//     //var binary_filename: [100]u8 = undefined;
-//     var expected_buffer: [512]u8 = undefined;
-//     var gotten_buffer: [512]u8 = undefined;
+    const cwd = std.fs.cwd();
+    const dir: Dir = try cwd.openDir("testdata", .{.iterate = true});
+    //var binary_filename: [100]u8 = undefined;
+    var expected_buffer: [512]u8 = undefined;
+    var gotten_buffer: [512]u8 = undefined;
 
-//     var iter = dir.iterate();
-//     while (try iter.next()) |entry| {
-//         const filename: []const u8 = entry.name;
-//         if (!mem.endsWith(u8, filename, ".ct33")) continue;
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        const filename: []const u8 = entry.name;
+        if (!mem.endsWith(u8, filename, ".ct33")) continue;
 
-//         const binary_filename = try mem.replaceOwned(u8, allocator, filename, "ct33", "machine");
-//         defer allocator.free(binary_filename);
+        const binary_filename = try mem.replaceOwned(u8, allocator, filename, "ct33", "machine");
+        defer allocator.free(binary_filename);
 
-//         // const binaryfile: File = try dir.openFile(binaryfile, .{.read = true});
-//         const expected: []const u8 = dir.readFile(binary_filename, expected_buffer[0..]) catch {
-//             // try stderr.print("Couldn't open file {s} because {}\n", .{binary_filename, err});
-//             continue;
-//         };
+        // const binaryfile: File = try dir.openFile(binaryfile, .{.read = true});
+        const expected: []const u8 = dir.readFile(binary_filename, expected_buffer[0..]) catch {
+            // try stderr.print("Couldn't open file {s} because {}\n", .{binary_filename, err});
+            continue;
+        };
         
-//         var source = io.StreamSource{ 
-//             .buffer = io.fixedBufferStream(&gotten_buffer)
-//         };
+        var source = io.StreamSource{ 
+            .buffer = io.fixedBufferStream(&gotten_buffer)
+        };
 
-//         const srcfile: File = dir.openFile(filename, .{ .read = true }) catch |err| {
-//             try stderr.print("Couldn't open file {s} because {}\n", .{filename, err});
-//             return err;
-//         };        
-//         defer srcfile.close();
-//         assemble(allocator, srcfile, source.writer()) catch |err| {
-//             try stderr.print("Assemble of {s} failed because of {}\n", .{filename, err});
-//             return err;
-//         };
+        const srcfile: File = dir.openFile(filename, .{ .read = true }) catch |err| {
+            try stderr.print("Couldn't open file {s} because {}\n", .{filename, err});
+            return err;
+        };        
+        defer srcfile.close();
+        assemble(allocator, srcfile, source.writer()) catch |err| {
+            try stderr.print("Assemble of {s} failed because of {}\n", .{filename, err});
+            return err;
+        };
 
-//         const gotten = source.buffer.getWritten();
-//         expect(mem.eql(u8, gotten, expected)) catch |err| {
-//             try stderr.print("{s} got:\n{s}\n", .{filename, gotten});
-//             try stderr.print("{s} expected:\n{s}\n", .{binary_filename, expected});
-//             return err;
-//         };
-//         // try stdout.print("{s}\n", .{filename});
-//     }
-// }
+        const gotten = source.buffer.getWritten();
+        expect(mem.eql(u8, gotten, expected)) catch |err| {
+            try stderr.print("{s} got:\n{s}\n", .{filename, gotten});
+            try stderr.print("{s} expected:\n{s}\n", .{binary_filename, expected});
+            return err;
+        };
+        // try stdout.print("{s}\n", .{filename});
+    }
+}
