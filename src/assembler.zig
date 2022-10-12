@@ -5,7 +5,7 @@ const stderr = std.io.getStdErr().writer();
 const io = std.io;
 const process = std.process;
 
-//const ArrayList = std.ArrayList;
+const Array = std.ArrayList;
 const fs = std.fs;
 const mem = std.mem;
 const ascii = std.ascii;
@@ -228,14 +228,69 @@ pub fn main() !void {
 // Tests
 const expect = std.testing.expect;
 
-// test "string operations" {
-//     const addstr = "ADD x1, x1, x2";
-//     // const jmpstr = "BGT x4, multiply";
+fn parse(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
+    var code = mem.trim(u8, line, " \t");
+    var i = mem.indexOf(u8, code, "//") orelse code.len;
+    code = code[0..i];
 
-//     if (mem.indexOfScalar(u8, addstr, ' ')) |i| {
-//         try stdout.print("Inst {s}\n", .{addstr[0..i]});
-//     }
-// }
+    const n = code.len;
+    if (code[n - 1] == ':') return null;
+
+    i = mem.indexOfScalar(u8, code, ' ') orelse n;
+    const mnemonic = code[0..i];
+
+    var iter = mem.tokenize(u8, code[i..], " ,");
+    var registers = Array(u8).init(alloc);
+    defer registers.deinit();
+
+    var address: ?u8 = null; // address of a label
+
+
+    while (iter.next()) |operand| {
+        if (labels.get(operand)) |addr| {
+            address = addr;    
+        }
+        else if (operand.len == 2 and ascii.isDigit(operand[1])) {
+            try registers.append(operand[1] - '0');
+        }
+    }
+
+    const opcode = try Opcode.fromString(mnemonic);
+    var instruction: i32 = @enumToInt(opcode); 
+    const regs = registers.items;
+
+    if (regs.len >= 1)
+        instruction += @as(i32, regs[0]) * 100;
+    if (regs.len == 3) {
+        instruction += regs[1] * 10;
+        instruction += regs[2];
+    }
+    if (address) |addr| {
+        instruction += addr;
+    } else if (regs.len < 3) {
+        instruction += regs[0] * 10;
+        instruction += regs[1];
+    }
+    
+    return instruction;
+}
+
+test "string operations" {
+    const allocator = std.testing.allocator;
+
+    const line = "ADD x3, x1";
+    // const jmpstr = "BGT x4, multiply";
+
+    var labels = Dict(u8).init(allocator);
+    defer labels.deinit();
+    try labels.put("foo", 42);
+    try labels.put("bar", 88);
+
+    const maybe = try parse(allocator, labels, line);
+    if (maybe) |instruction| {
+        debug("Parse of {s} = {}\n", .{line, instruction});
+    }
+}
 
 test "individual instructions" {
     const allocator = std.testing.allocator;
