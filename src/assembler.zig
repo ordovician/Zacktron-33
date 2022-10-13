@@ -19,6 +19,8 @@ const debug = std.debug.print;
 
 const ParseError = error{
     UnknownOpcode,
+    MissingAddress,
+    MissingOperand,
     IllegalRegisterName,
 };
 
@@ -114,7 +116,7 @@ fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
     const mnemonic = code[0..i];
 
     var iter = mem.tokenize(u8, code[i..], " ,");
-    var registers = Array(u8).init(alloc);
+    var registers = Array(u16).init(alloc);
     defer registers.deinit();
 
     var address: ?u8 = null; // address of a label
@@ -135,18 +137,37 @@ fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
     var instruction: i32 = @enumToInt(opcode); 
     const regs = registers.items;
 
-    if (regs.len >= 1)
-        instruction += @as(i32, regs[0]) * 100;
-    if (regs.len == 3) {
-        instruction += regs[1] * 10;
-        instruction += regs[2];
+    switch (opcode) {
+        .HLT => {},
+        .ADD, .SUB => instruction += switch (regs.len) {
+                3 => 100*regs[0] + 10*regs[1] + regs[2],
+                2 => 100*regs[0] + 10*regs[0] + regs[1],
+                1 => 100*regs[0],
+                else => return ParseError.MissingOperand,
+            },
+        .SUBI, .LSH, .RSH => instruction += 100*regs[0] + 10*regs[1],
+        .LD, .ST, .BRZ, .BGT => if (address) |addr| {
+                instruction += addr;
+                if (regs.len != 0) instruction += 100*regs[0];
+            } else {
+                return ParseError.MissingAddress;
+            },
+        .INP, .OUT => instruction += 100*regs[0],
+        .DEC => instruction += 100*regs[0] + 10*regs[0],
     }
-    if (address) |addr| {
-        instruction += addr;
-    } else if (regs.len < 3) {
-        instruction += regs[0] * 10;
-        if (regs.len == 2) instruction += regs[1];
-    }
+
+    // if (regs.len >= 1)
+    //     instruction += @as(i32, regs[0]) * 100;
+    // if (regs.len == 3) {
+    //     instruction += regs[1] * 10;
+    //     instruction += regs[2];
+    // }
+    // if (address) |addr| {
+    //     instruction += addr;
+    // } else if (regs.len == 2) {
+    //     instruction += regs[0] * 10;
+    //     instruction += regs[1];
+    // }
     
     return instruction;
 }
@@ -223,28 +244,16 @@ pub fn main() !void {
 // Tests
 const expect = std.testing.expect;
 
-test "string operations" {
-    const allocator = std.testing.allocator;
-
-    const line = "ADD x3, x1";
-    // const jmpstr = "BGT x4, multiply";
-
-    var labels = Dict(u8).init(allocator);
-    defer labels.deinit();
-    try labels.put("foo", 42);
-    try labels.put("bar", 88);
-
-    const maybe = try assembleLine(allocator, labels, line);
-    if (maybe) |instruction| {
-        debug("Parse of {s} = {}\n", .{line, instruction});
-    }
-}
-
 test "individual instructions" {
     const allocator = std.testing.allocator;
     var labels = Dict(u8).init(allocator);
 
     const lines = [_][]const u8{
+        "INP x1",
+        "INP x1",
+        "INP x2",
+        "CLR x3",
+        "OUT x3",
         "ADD x3, x1", 
         "CLR x3",
         "DEC x2",
@@ -255,9 +264,6 @@ test "individual instructions" {
         const instruction = maybeInst orelse continue;
         try stdout.print("{s} : {}\n", .{line, instruction});
     }
-
-    const instruction = (try assembleLine(allocator, labels, "ADD x3, x1")).?;
-    try stdout.print("ADD x3, x1 : {}\n", .{instruction});
 }
 
 test "only labels" {
