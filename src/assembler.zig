@@ -25,48 +25,49 @@ const ParseError = error{
 };
 
 const Opcode = enum(i32) {
-    HLT = 0,
-    ADD = 1000,
-    SUB = 2000,
-    SUBI = 3000,
-    LSH = 4000,
-    RSH = 5000,
-    BRZ = 6000,
-    BGT = 7000,
-    LD = 8000,
-    ST = 9000,
+    HLT,
+    ADD,
+    SUB,
+    SUBI,
+    LSH,
+    RSH,
+    BRZ,
+    BGT,
+    LD,
+    ST,
 
     // Psedo instructions
-    INP = 8090,
-    OUT = 9091,
-    DEC = 3001,
+    INP,
+    OUT,
+    DEC,
+    BRA,
+    CLR,
+    MOV,
 
     fn fromString(str: []const u8) !Opcode {
-        const opcodes = [_]Opcode{
-            .HLT,
-            .ADD,
-            .SUB,
-            .SUBI,
-            .LSH,
-            .RSH,
-            .BRZ,
-            .BGT,
-            .LD,
-            .ST,
-            .INP,
-            .OUT,
-            .DEC,
+        return std.meta.stringToEnum(Opcode, str) orelse ParseError.UnknownOpcode;
+    }
+
+    fn toInteger(opcode: Opcode) i32 {
+        return switch (opcode) {
+            .HLT => 0,
+            .ADD => 1000,
+            .SUB => 2000,
+            .SUBI => 3000,
+            .LSH => 4000,
+            .RSH => 5000,
+            .BRZ => 6000,
+            .BGT => 7000,
+            .LD => 8000,
+            .ST => 9000,
+            // Psedo instructions
+            .INP => 8090,
+            .OUT => 9091,
+            .DEC => 3001,
+            .BRA => 6000,
+            .MOV => 1000,
+            .CLR => 1000,
         };
-        for (opcodes) |op| {
-            if (ascii.eqlIgnoreCase(@tagName(op), str)) {
-                return op;
-            }
-        }
-        if (ascii.eqlIgnoreCase("BRA", str)) {
-            return .BRZ;
-        } else if (ascii.eqlIgnoreCase("CLR", str))
-            return .ADD; 
-        return ParseError.UnknownOpcode;
     }
 };
 
@@ -129,24 +130,30 @@ fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
         else if (operand.len == 2 and ascii.isDigit(operand[1])) {
             try registers.append(operand[1] - '0');
         } else {
-            return ParseError.IllegalRegisterName;
+            const offset = std.fmt.parseInt(u16, operand, 10) catch {
+                return ParseError.IllegalRegisterName;
+            };
+            try registers.append(offset);
         }
+    }
+    
+    const regs = registers.items;
+    if (mem.eql(u8, mnemonic, "DAT")) {
+        return regs[0];
     }
 
     const opcode = try Opcode.fromString(mnemonic);
-    var instruction: i32 = @enumToInt(opcode); 
-    const regs = registers.items;
+    var instruction: i32 = opcode.toInteger(); 
 
     switch (opcode) {
         .HLT => {},
         .ADD, .SUB => instruction += switch (regs.len) {
                 3 => 100*regs[0] + 10*regs[1] + regs[2],
                 2 => 100*regs[0] + 10*regs[0] + regs[1],
-                1 => 100*regs[0],
                 else => return ParseError.MissingOperand,
             },
-        .SUBI, .LSH, .RSH => instruction += 100*regs[0] + 10*regs[1],
-        .LD, .ST, .BRZ, .BGT => if (address) |addr| {
+        .SUBI, .LSH, .RSH => instruction += 100*regs[0] + 10*regs[1] + regs[2],
+        .LD, .ST, .BRZ, .BGT, .BRA => if (address) |addr| {
                 instruction += addr;
                 if (regs.len != 0) instruction += 100*regs[0];
             } else {
@@ -154,21 +161,10 @@ fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
             },
         .INP, .OUT => instruction += 100*regs[0],
         .DEC => instruction += 100*regs[0] + 10*regs[0],
+        .MOV => instruction += 100*regs[0] + regs[1],
+        .CLR => instruction += 100*regs[0],
     }
 
-    // if (regs.len >= 1)
-    //     instruction += @as(i32, regs[0]) * 100;
-    // if (regs.len == 3) {
-    //     instruction += regs[1] * 10;
-    //     instruction += regs[2];
-    // }
-    // if (address) |addr| {
-    //     instruction += addr;
-    // } else if (regs.len == 2) {
-    //     instruction += regs[0] * 10;
-    //     instruction += regs[1];
-    // }
-    
     return instruction;
 }
 
@@ -244,25 +240,35 @@ pub fn main() !void {
 // Tests
 const expect = std.testing.expect;
 
+const AssemTest = struct {
+    src: []const u8,
+    inst: i32,
+};
+
 test "individual instructions" {
     const allocator = std.testing.allocator;
     var labels = Dict(u8).init(allocator);
 
-    const lines = [_][]const u8{
-        "INP x1",
-        "INP x1",
-        "INP x2",
-        "CLR x3",
-        "OUT x3",
-        "ADD x3, x1", 
-        "CLR x3",
-        "DEC x2",
+    const lines = [_]AssemTest{
+        .{ .src = "INP x1", .inst = 8190 },
+        .{ .src = "INP x2", .inst = 8290 },
+        .{ .src = "CLR x3", .inst = 1300 },
+        .{ .src = "OUT x3", .inst = 9391 },
+        .{ .src = "ADD x3, x1",  .inst = 1331 },
+        .{ .src = "CLR x3", .inst = 1300 },
+        .{ .src = "DEC x2", .inst = 3221 },
+        .{ .src = "SUBI x9, x8, 7", .inst = 3987 },
+        .{ .src = "MOV x9, x8", .inst = 1908 },
     };
 
     for (lines) |line| {
-        const maybeInst: ?i32 = try assembleLine(allocator, labels, line);
+        const maybeInst: ?i32 = try assembleLine(allocator, labels, line.src);
         const instruction = maybeInst orelse continue;
-        try stdout.print("{s} : {}\n", .{line, instruction});
+        // try stdout.print("{s} : {}\n", .{line.sr, instruction});
+        std.testing.expectEqual(line.inst, instruction) catch |err| {
+            try stderr.print("Expected '{s}' to assemble into {} not {}\n", .{line.src, line.inst, instruction});
+            return err;
+        };
     }
 }
 
