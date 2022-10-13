@@ -24,6 +24,8 @@ const ParseError = error{
     IllegalRegisterName,
 };
 
+/// Numerical representation of assembly mnemnonics
+/// A opcode basically says what operation to perform on operands.
 const Opcode = enum(u8) {
     HLT,
     ADD,
@@ -44,10 +46,14 @@ const Opcode = enum(u8) {
     CLR,
     MOV,
 
+    /// Turn a assembly mnemonic into an enum opcode
     fn fromString(str: []const u8) !Opcode {
         return std.meta.stringToEnum(Opcode, str) orelse ParseError.UnknownOpcode;
     }
 
+    /// Serve as basis to build up a 4-digit number representing a whole assembly
+    /// instruction. Need to  add info to these base number about the registers
+    /// addresses and constants used
     fn toInteger(opcode: Opcode) u16 {
         return switch (opcode) {
             .HLT => 0,
@@ -99,12 +105,9 @@ fn readSymTable(allocator: Allocator, file: File) !Dict(u8) {
     return labels;
 }
 
-const State = enum {
-    operands,
-    comment,
-};
-
-/// Turn single line of assembly code into an instruction
+/// Turn single line of assembly code into an instruction, represented by a 4-digit unsigned number
+/// labels contains addresses of labels in code. Typically these are used to label data or
+/// places to jump to in the code.
 fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?u16 {
     var code = mem.trim(u8, line, " \t");
     var i = mem.indexOf(u8, code, "//") orelse code.len;
@@ -138,6 +141,9 @@ fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?u16 {
     }
     
     const regs = registers.items;
+
+    // DAT isn't a real mnemonic so we got to check for it
+    // before turning it into opcodes
     if (mem.eql(u8, mnemonic, "DAT")) {
         return regs[0];
     }
@@ -169,7 +175,8 @@ fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?u16 {
 }
 
 /// Assemble a whole file and write output to writer which must
-/// match the type made from std.io.Writer
+/// match the type made from std.io.Writer such as std.fs.File.
+/// The stdout obtained from std.io.getStdOut().writer() is such a type
 fn assemble(allocator: Allocator, file: File, writer: anytype) !void {
     var labels = try readSymTable(allocator, file);
     defer releaseDict(allocator, &labels);
@@ -199,6 +206,9 @@ fn assemble(allocator: Allocator, file: File, writer: anytype) !void {
     }
 }
 
+/// Assemble code in filename and write result to writer which must be a type made
+/// from std.io.Writer such as std.fs.File
+/// The stdout obtained from std.io.getStdOut().writer() is such a type
 fn assembleFile(allocator: Allocator, filename: []const u8, writer: anytype) !void {
     const dir: Dir = std.fs.cwd();
     const file: File = try dir.openFile(
@@ -210,6 +220,7 @@ fn assembleFile(allocator: Allocator, filename: []const u8, writer: anytype) !vo
     try assemble(allocator, file, writer);
 }
 
+/// Releases key allocated to dictionary
 fn releaseDict(allocator: Allocator, dict: *Dict(u8)) void {
     var iter = dict.iterator();
     while (iter.next()) |entry|
@@ -240,11 +251,14 @@ pub fn main() !void {
 // Tests
 const expect = std.testing.expect;
 
+// helper struct to hold assembly code and the corresponding machine code instruction
 const AssemTest = struct {
     src: []const u8,
     inst: u16,
 };
 
+// add instruction to this list if you are uncertain if specific
+// instruction are being turned into machine code correctly
 test "individual instructions" {
     const allocator = std.testing.allocator;
     var labels = Dict(u8).init(allocator);
@@ -272,6 +286,7 @@ test "individual instructions" {
     }
 }
 
+// check our parsing of labels (used as jump spots and for data)
 test "only labels" {
     const allocator = std.testing.allocator;
 
@@ -291,6 +306,9 @@ test "only labels" {
     }
 }
 
+// In testdata folder I have put a bunch of machine code files, previously assembled.
+// test against these to make sure that when we assembly the original source code
+// again we don't have a regression in the code
 test "regression tests" {
     const allocator = std.testing.allocator;
     

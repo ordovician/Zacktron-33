@@ -37,7 +37,7 @@ My Julia solution as almost no error handling, but I notice that my Zig solution
 ## Challenges in Implementation
 Script language style implementation and thinking don't work well in Zig, you got to think more like a C programmer which take me a bit time getting used to after a long time with Julia.
 
-- When an if-statement needs curly brances and not is often not obvious to me. There seems to be some difference between the usage of expressions and statements.
+- When an if-statement needs curly braces and not is often not obvious to me. There seems to be some difference between the usage of expressions and statements.
 
 - Likewise switch statement can be used as a statement or an expression. When used as an expression you need a semicolon at the end.
 
@@ -47,9 +47,9 @@ Script language style implementation and thinking don't work well in Zig, you go
 
 - Wasted time trying to figure out if there was something akin to `-1` like in Python or `end` like in Julia to refer to the last element in a slice. There isn't. Use `slice.len` if you need it. It is simply a struct member.
 
-- Spent a lot of time looking through the Zig source code to understand how `std.StringHashMap` deals with its string keys. Are they automatically deleted when `deinit()` is called?  No Zig does not duplicate strings used as keys. It is your responsibility to deallocate the strings keys. In retrospect this makes sense. Zig is staying low level and doing minimal convieniences for you. That is sort of the point. There is no RAII in Zig, so just deleting stuff automatically would not have been a good idea anyway. 
+- Spent a lot of time looking through the Zig source code to understand how `std.StringHashMap` deals with its string keys. Are they automatically deleted when `deinit()` is called?  No Zig does not duplicate strings used as keys. It is your responsibility to deallocate the strings keys. In retrospect this makes sense. Zig is staying low level and doing minimal conveniences for you. That is sort of the point. There is no RAII in Zig, so just deleting stuff automatically would not have been a good idea anyway. 
 
-## Status November 8th 2020
-Not all programs will assemble as the pseudo instructions are not all properly handled. There is currently know disassembler and the assembly process only offers output to stdout. Later I want to support writing results to a file of choosing.
+## Status October 13th 2022
+The assembler currently works, but we lack a disassembler and simulator. However you can find these programs in the Julia variant called [Calcutron-33](https://github.com/ordovician/Calcutron33.jl) which is more developed.
 
     
