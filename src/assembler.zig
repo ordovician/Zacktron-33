@@ -24,7 +24,7 @@ const ParseError = error{
     IllegalRegisterName,
 };
 
-const Opcode = enum(i32) {
+const Opcode = enum(u8) {
     HLT,
     ADD,
     SUB,
@@ -48,7 +48,7 @@ const Opcode = enum(i32) {
         return std.meta.stringToEnum(Opcode, str) orelse ParseError.UnknownOpcode;
     }
 
-    fn toInteger(opcode: Opcode) i32 {
+    fn toInteger(opcode: Opcode) u16 {
         return switch (opcode) {
             .HLT => 0,
             .ADD => 1000,
@@ -105,7 +105,7 @@ const State = enum {
 };
 
 /// Turn single line of assembly code into an instruction
-fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
+fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?u16 {
     var code = mem.trim(u8, line, " \t");
     var i = mem.indexOf(u8, code, "//") orelse code.len;
     code = code[0..i];
@@ -143,7 +143,7 @@ fn assembleLine(alloc: Allocator, labels: Dict(u8), line: []const u8) !?i32 {
     }
 
     const opcode = try Opcode.fromString(mnemonic);
-    var instruction: i32 = opcode.toInteger(); 
+    var instruction: u16 = opcode.toInteger(); 
 
     switch (opcode) {
         .HLT => {},
@@ -184,7 +184,7 @@ fn assemble(allocator: Allocator, file: File, writer: anytype) !void {
     while (try reader.readUntilDelimiterOrEof(buffer[0..], '\n')) |tmp_line| {
         lineno += 1;
         const line = mem.trim(u8, tmp_line, " \t");
-        const maybeInstruction: ?i32 = assembleLine(allocator, labels, line) catch |err| {
+        const maybeInstruction: ?u16 = assembleLine(allocator, labels, line) catch |err| {
             switch (err) {
                 ParseError.IllegalRegisterName => try stderr.print("{d}: Invalid register name or unknown label: {s}\n", .{ lineno, line }),
                 ParseError.UnknownOpcode => try stderr.print("{d}: Could not parse mnemonic: {s}\n", .{ lineno, line }),
@@ -195,7 +195,7 @@ fn assemble(allocator: Allocator, file: File, writer: anytype) !void {
         };
 
         if (maybeInstruction) |instruction|
-            try writer.print("{}\n", .{instruction});
+            try writer.print("{d:0<4}\n", .{instruction});
     }
 }
 
@@ -242,7 +242,7 @@ const expect = std.testing.expect;
 
 const AssemTest = struct {
     src: []const u8,
-    inst: i32,
+    inst: u16,
 };
 
 test "individual instructions" {
@@ -262,7 +262,7 @@ test "individual instructions" {
     };
 
     for (lines) |line| {
-        const maybeInst: ?i32 = try assembleLine(allocator, labels, line.src);
+        const maybeInst: ?u16 = try assembleLine(allocator, labels, line.src);
         const instruction = maybeInst orelse continue;
         // try stdout.print("{s} : {}\n", .{line.sr, instruction});
         std.testing.expectEqual(line.inst, instruction) catch |err| {
