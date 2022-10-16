@@ -5,6 +5,7 @@ pub const ParseError = error{
     MissingAddress,
     MissingOperand,
     IllegalRegisterName,
+    InstructionMustBeInteger,
 };
 
 /// Numerical representation of assembly mnemnonics
