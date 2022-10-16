@@ -27,13 +27,14 @@ pub const RuntimeError = error{
     AllInputRead,
     ReadingFromUnsupportedAddress,
     WritingToUnsupportedAddress,
+    UnsupportedOpcode,
 };
 
 const Computer = struct {
     allocator: Allocator,
-    pc: i16 = 0,         // program counter
+    pc: usize = 0,         // program counter
     regs: [9]i16,        // value in registers
-    memory: []u16,       // stores program and data
+    memory: []i16,       // stores program and data
     inputs: Array(i16),  // program inputs
     outputs: Array(i16), // outputs from calculations
 
@@ -41,20 +42,21 @@ const Computer = struct {
 
     // Create a computer with given program. The program is duplicated
     // so the passed argument should be released by caller.
-    pub fn load(allocator: Allocator, program: []u16) Self {
+    pub fn load(allocator: Allocator, program: []i16) !Self {
         return Self {
             .allocator = allocator,
             .pc = 0,
-            .memory = allocator.dupe(u16, program),
+            .memory = try allocator.dupe(i16, program),
             .inputs = Array(i16).init(allocator),
             .outputs = Array(i16).init(allocator),
+            .regs = undefined,
         };
     }
 
     pub fn deinit(self: Self) void {
         self.allocator.free(self.memory);
         self.inputs.deinit();
-        self.outputs.deinit;
+        self.outputs.deinit();
     }
 
     fn reset(comp: *Self) void {
@@ -66,19 +68,19 @@ const Computer = struct {
         comp.outputs.shrinkRetainingCapacity(0);
     }
 
-    fn loadFile(allocator: Allocator, filename: []const u8) ParseError!void {
+    fn loadFile(allocator: Allocator, filename: []const u8) !Self {
         const dir: Dir = std.fs.cwd();
         var buffer: [1024]u8 = undefined;
         const program: []const u8 = try dir.readFile(filename, buffer[0..]);
-        var instructions = Array(u16).init(allocator);
+        var instructions = Array(i16).init(allocator);
         defer instructions.deinit();
 
         var iter = mem.tokenize(u8, program, " \n");
         while (iter.next()) |line| {
-            const instruction = fmt.parseInt(u16, line, 10) catch {
+            const instruction = fmt.parseInt(i16, line, 10) catch {
                 return ParseError.InstructionMustBeInteger;
             };
-            instructions.append(instruction);
+            try instructions.append(instruction);
         }
 
         return load(allocator, instructions.items);
@@ -86,20 +88,20 @@ const Computer = struct {
 
     fn step(comp: *Self) !void { 
         const ir = comp.memory[comp.pc + 1];
-        const regs = comp.regs;
+        var regs: []i16 = comp.regs[0..];
 
-        stdout.print("{}: {}; ", .{comp.pc, ir});
+        try stdout.print("{}: {}; ", .{comp.pc, ir});
 
         // There is always a destination register. But source
         // could be an address or two registers
          const opcode: Opcode = @intToEnum(Opcode, (@divTrunc(ir, 1000)));
-         const operands = ir % 1000;
-         const dst = @divTrunc(operands, 100);
-         const addr = operands % 100;
-         const src  = @divTrunc(addr, 10);
-         const offset = addr % 10;
+         const operands = @rem(ir, 1000);
+         const dst = @intCast(u8, @divTrunc(operands, 100));
+         const addr: u8 = @intCast(u8, @rem(operands, 100));
+         const src  = @intCast(u8, @divTrunc(addr, 10));
+         const offset: u8 = @intCast(u8, @rem(addr, 10));
 
-        var rd = 0;
+        var rd: i16 = 0;
         if (dst >= 1 and dst <= 9)
             rd = regs[dst];
         switch (opcode) {
@@ -108,7 +110,7 @@ const Computer = struct {
             .SUBI => rd = regs[src] - offset,
             .LSH => rd = regs[src]*10^offset,
             .RSH => {
-                rd = regs[src] % 10^offset;
+                rd = @rem(regs[src], 10^offset);
                 regs[src] = @divTrunc(regs[src], 10^offset);
             },
             .BRZ => if (rd == 0) {
@@ -126,28 +128,68 @@ const Computer = struct {
                         return RuntimeError.ReadingFromUnsupportedAddress;
                     },                
             .ST => if (addr < 90) {
-                        comp.memory[addr+1] = rd;                 
+                    comp.memory[addr+1] = rd;                 
                 } else if (addr == 91) {
-                        comp.outputs.append(rd);
+                    try comp.outputs.append(rd);
 
                 } else {
                     return RuntimeError.WritingToUnsupportedAddress;
                 },
-            .HLT => comp.pc -= 1, // To avoid moving forward            
+            .HLT => comp.pc -= 1, // To avoid moving forward
+            else => return RuntimeError.UnsupportedOpcode,      
         }
 
         if (dst >= 1 and dst <= 9)
             rd = regs[dst];
 
-        stdout.print("{}", @tagName(opcode));
+        try stdout.print("{s}", .{@tagName(opcode)});
         switch (opcode) {
-            .ADD, .SUB => stdout.print(" x{}, x{}, x{}\n", .{dst, src, offset}),
-            .SUBI, .LSH, .RSH => stdout.print(" x{}, x{}, {}\n", .{dst, src, offset}),
-            .HLT => stdout.print("\n", .{}),
-            else => stdout.print(" x{}, {}\n", .{dst, addr}),
+            .ADD, .SUB => try stdout.print(" x{}, x{}, x{}\n", .{dst, src, offset}),
+            .SUBI, .LSH, .RSH => try stdout.print(" x{}, x{}, {}\n", .{dst, src, offset}),
+            .HLT => try stdout.print("\n", .{}),
+            else => try stdout.print(" x{}, {}\n", .{dst, addr}),
         }
 
         comp.pc += 1;
+    }
+
+    fn run(comp: *Computer) !void {
+        var i:i32 = 0;
+        while (i < 100) : (i += 1) {
+            const pc = comp.pc;
+            try comp.step();
+
+            if (comp.pc == pc) {
+                break;
+            } 
+        }
+    }
+
+    pub fn format(
+        comp: Computer,
+        comptime _: []const u8,
+        _: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        try writer.print("PC: {}\n", .{comp.pc});
+        
+        // Register content
+        for (comp.regs) |reg, i| {
+            try writer.print("x{}: {}, ", .{i, reg});
+        }
+        try writer.print("\n", .{});
+
+        // Inputs
+        for (comp.inputs.items) |input| {
+            try writer.print("{}, ", .{input});
+        }
+        try writer.print("\n", .{});
+
+        // Outputs
+        for (comp.outputs.items) |output| {
+            try writer.print("{}, ", .{output});
+        }
+        try writer.print("\n", .{});
     }
 
 };
@@ -162,7 +204,7 @@ pub fn main() !void {
     const args = try process.argsAlloc(allocator);
     defer process.argsFree(allocator, args);
 
-    var filename: []const u8 = "examples/adder.machine"[0..];
+    var filename: []const u8 = "testdata/adder.machine"[0..];
 
     if (args.len == 2) {
         filename = args[1];
@@ -170,4 +212,15 @@ pub fn main() !void {
         try stderr.print("Usage: simulator filename\n", .{});
     }
 
+    var computer = try Computer.loadFile(allocator, filename);
+    defer computer.deinit();
+
+    // Just to have some inputs to play with
+    try computer.inputs.append(2);
+    try computer.inputs.append(3);
+
+    var comp: *Computer = &computer;
+
+    try comp.run();
+    try stdout.print("{}\n", .{computer});
 }

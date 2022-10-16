@@ -23,6 +23,27 @@ Unlike Little Man Computer, which has only one register this has a more RISC lik
 
 Branching is done similar to MIPS. One compares the contents of a register to 0. So e.g. `BGT x2, multiply` will make a jump to `multiply` if the contents of `x2` register is larger than 0.
 
+## Install and Usage
+You can use the the `zig build --help` command to get overview over how to build and use the files.  
+
+    ❯ zig build --help
+    Usage: zig build [steps] [options]
+
+    Steps:
+    install (default)            Copy build artifacts to prefix path
+    uninstall                    Remove build artifacts from prefix path
+    assemble                     Run the assembler
+    simulate                     Run the simulator
+
+Running `zig build` will create two executables `assemble` and `simulate` in the `zig-out` directory. You can install built executable anywhere with the `zig build install` command. To install in the current directory, you can write:
+
+    ❯ zig build install -p . --prefix-exe-dir .
+
+To build and run an executable directly you can write the following:
+
+    ❯ zig build assemble
+    ❯ zig build simulate
+
 ## Remarks on Difference from Julia Implementation
 Julia is a high level language and Zig is a low level language, which tend to force a different way of thinking about the problem. In Julia working is text strings is very convenient and easy. In Zig it is often far more verbose to use Zig in a Julia fashion because that involves doing a lot of operations which allocate new memory. E.g. if you want to uppercase a whole string, you need to actually allocate new memory for this new uppercase string.
 
@@ -50,6 +71,6 @@ Script language style implementation and thinking don't work well in Zig, you go
 - Spent a lot of time looking through the Zig source code to understand how `std.StringHashMap` deals with its string keys. Are they automatically deleted when `deinit()` is called?  No Zig does not duplicate strings used as keys. It is your responsibility to deallocate the strings keys. In retrospect this makes sense. Zig is staying low level and doing minimal conveniences for you. That is sort of the point. There is no RAII in Zig, so just deleting stuff automatically would not have been a good idea anyway. 
 
 ## Status October 13th 2022
-The assembler currently works, but we lack a disassembler and simulator. However you can find these programs in the Julia variant called [Calcutron-33](https://github.com/ordovician/Calcutron33.jl) which is more developed.
+The assembler currently works, but we lack a disassembler. The simulator is work in progress. However you can find these programs in the Julia variant called [Calcutron-33](https://github.com/ordovician/Calcutron33.jl) which is more developed.
 
     
