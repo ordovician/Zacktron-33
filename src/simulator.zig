@@ -40,6 +40,17 @@ const Computer = struct {
 
     const Self = @This();
 
+    pub fn init(allocator: Allocator) !Self {
+         return Self {
+            .allocator = allocator,
+            .pc = 0,
+            .memory = []i16{},
+            .inputs = Array(i16).init(allocator),
+            .outputs = Array(i16).init(allocator),
+            .regs = [10]i16{0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        };       
+    }
+
     // Create a computer with given program. The program is duplicated
     // so the passed argument should be released by caller.
     pub fn load(allocator: Allocator, program: []i16) !Self {
@@ -87,7 +98,7 @@ const Computer = struct {
     }
 
     fn step(comp: *Self) !void { 
-        const ir = comp.memory[comp.pc + 1];
+        const ir = comp.memory[comp.pc];
         var regs: []i16 = comp.regs[0..];
 
         try stdout.print("{}: {}; ", .{comp.pc, ir});
@@ -144,7 +155,7 @@ const Computer = struct {
         }
 
         if (dst >= 1 and dst <= 9)
-            rd = regs[dst];
+            regs[dst] = rd;
 
         try stdout.print("{s}", .{@tagName(opcode)});
         switch (opcode) {
@@ -191,14 +202,14 @@ const Computer = struct {
         try writer.print("\n", .{});
 
         // Inputs
-        try writer.print("Inputs: \n", .{});
+        try writer.print("Inputs: ", .{});
         for (comp.inputs.items) |input| {
             try writer.print("{}, ", .{input});
         }
         try writer.print("\n", .{});
 
         // Outputs
-        try writer.print("Output: \n", .{});
+        try writer.print("Output: ", .{});
         for (comp.outputs.items) |output| {
             try writer.print("{}, ", .{output});
         }
@@ -229,11 +240,43 @@ pub fn main() !void {
     defer computer.deinit();
 
     // Just to have some inputs to play with
-    try computer.inputs.append(2);
-    try computer.inputs.append(3);
+    const inputs = [_]i16{2, 3, 8, 2, 10, 20};
+    try computer.inputs.appendSlice(inputs[0..]);
 
     var comp: *Computer = &computer;
 
     try comp.run();
-    try stdout.print("\n{}\n", .{computer});
+    try stdout.print("\n\nCPU state\n{}\n", .{computer});
 }
+
+const testing = std.testing;
+
+test "individual instructions" {
+    const allocator = std.testing.allocator;
+
+    var program = [_]i16{
+        8190, // INP x1
+        8290, // INP x2
+        1300, // CLR x3
+        9391, // OUT x3
+        1331, // ADD x3, x1
+        1300, // CLR x3
+        3221, // DEC x2
+        3987, // SUBI x9, x8, 7
+        1908, // MOV x9, x8
+    };
+
+    var computer = try Computer.load(allocator, program[0..]);
+    defer computer.deinit();
+
+    const inputs = [_]i16{2, 3};
+
+    // Just to have some inputs to play with
+    try computer.inputs.appendSlice(inputs[0..]);
+
+    try computer.step();
+    try testing.expectEqual(computer.regs[1], 3);
+
+    try computer.step();
+    try testing.expectEqual(computer.regs[2], 2);
+}    
