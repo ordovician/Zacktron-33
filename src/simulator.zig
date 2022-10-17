@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const stdin = std.io.getStdIn().reader();
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
 const io = std.io;
@@ -70,7 +71,7 @@ const Computer = struct {
         self.outputs.deinit();
     }
 
-    fn reset(comp: *Self) void {
+    pub fn reset(comp: *Self) void {
         comp.pc = 0;
         for (comp.regs) |_, i| {
             comp.regs[i] = 0;
@@ -79,7 +80,40 @@ const Computer = struct {
         comp.outputs.shrinkRetainingCapacity(0);
     }
 
-    fn loadFile(allocator: Allocator, filename: []const u8) !Self {
+    /// Add inputs to program. Read by INP instruction
+    pub fn addInputs(comp: *Self, inputs: []const i16) !void {
+        // inputs are stored in reverse order so we can pop from the end
+        // rather than the fron which would be less efficient
+        var i: usize = inputs.len;
+        while (i > 0) {
+            i -= 1;
+            try comp.inputs.append(inputs[i]);
+        }      
+    }
+
+    /// Set inputs to program. Read by INP instruction
+    pub fn setInputs(comp: *Self, inputs: []const i16) !void {
+        comp.inputs.shrinkRetainingCapacity(0);
+        try comp.addInputs(inputs);
+    }
+
+    /// Helpful to read inputs from stdin or a file
+    /// reader can be the reader of a file or stdin.
+    pub fn readInputs(comp: *Self, reader: anytype) !void {
+        var buffer: [1024]u8 = undefined;
+        const n = try reader.readAll(buffer[0..]);
+
+        var iter = mem.tokenize(u8, buffer[0..n], " \n");
+        while (iter.next()) |line| {
+            const input = fmt.parseInt(i16, line, 10) catch {
+                return ParseError.InstructionMustBeInteger;
+            };
+            try comp.inputs.append(input);
+        }
+        mem.reverse(i16, comp.inputs.items);
+    }   
+
+    pub fn loadFile(allocator: Allocator, filename: []const u8) !Self {
         const dir: Dir = std.fs.cwd();
         var buffer: [1024]u8 = undefined;
         const program: []const u8 = try dir.readFile(filename, buffer[0..]);
@@ -97,7 +131,7 @@ const Computer = struct {
         return load(allocator, instructions.items);
     }
 
-    fn step(comp: *Self) !void { 
+    pub fn step(comp: *Self) !void { 
         const ir = comp.memory[comp.pc];
         var regs: []i16 = comp.regs[0..];
 
@@ -170,7 +204,7 @@ const Computer = struct {
             comp.pc += 1;
     }
 
-    fn run(comp: *Computer) !void {
+    pub fn run(comp: *Computer) !void {
         var i:i32 = 0;
         while (i < 100) : (i += 1) {
             const pc = comp.pc;
@@ -203,9 +237,13 @@ const Computer = struct {
 
         // Inputs
         try writer.print("Inputs: ", .{});
-        for (comp.inputs.items) |input| {
-            try writer.print("{}, ", .{input});
+        const inputs = comp.inputs.items;
+        var i: usize = inputs.len;
+        while (i > 0) {
+            i -= 1;
+            try writer.print("{}, ", .{inputs[i]});
         }
+
         try writer.print("\n", .{});
 
         // Outputs
@@ -234,16 +272,17 @@ pub fn main() !void {
         filename = args[1];
     } else {
         try stderr.print("Usage: simulator filename\n", .{});
+        try stderr.print("\nInput numbers are read from stdin and are separated by space or newline\n", .{});
+        std.os.exit(0);
     }
 
     var computer = try Computer.loadFile(allocator, filename);
     defer computer.deinit();
 
-    // Just to have some inputs to play with
-    const inputs = [_]i16{2, 3, 8, 2, 10, 20};
-    try computer.inputs.appendSlice(inputs[0..]);
-
+    // const inputs = [_]i16{2, 3, 8, 2, 10, 20};
+    // try computer.setInputs(inputs[0..]);
     var comp: *Computer = &computer;
+    try comp.readInputs(stdin);
 
     try comp.run();
     try stdout.print("\n\nCPU state\n{}\n", .{computer});
@@ -272,11 +311,11 @@ test "individual instructions" {
     const inputs = [_]i16{2, 3};
 
     // Just to have some inputs to play with
-    try computer.inputs.appendSlice(inputs[0..]);
+    try computer.setInputs(inputs[0..]);
 
     try computer.step();
-    try testing.expectEqual(computer.regs[1], 3);
+    try testing.expectEqual(computer.regs[1], 2);
 
     try computer.step();
-    try testing.expectEqual(computer.regs[2], 2);
+    try testing.expectEqual(computer.regs[2], 3);
 }    
