@@ -33,7 +33,7 @@ pub const RuntimeError = error{
 const Computer = struct {
     allocator: Allocator,
     pc: usize = 0,         // program counter
-    regs: [9]i16,        // value in registers
+    regs: [10]i16,        // value in registers
     memory: []i16,       // stores program and data
     inputs: Array(i16),  // program inputs
     outputs: Array(i16), // outputs from calculations
@@ -49,7 +49,7 @@ const Computer = struct {
             .memory = try allocator.dupe(i16, program),
             .inputs = Array(i16).init(allocator),
             .outputs = Array(i16).init(allocator),
-            .regs = undefined,
+            .regs = [10]i16{0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
         };
     }
 
@@ -94,12 +94,16 @@ const Computer = struct {
 
         // There is always a destination register. But source
         // could be an address or two registers
-         const opcode: Opcode = @intToEnum(Opcode, (@divTrunc(ir, 1000)));
-         const operands = @rem(ir, 1000);
-         const dst = @intCast(u8, @divTrunc(operands, 100));
-         const addr: u8 = @intCast(u8, @rem(operands, 100));
-         const src  = @intCast(u8, @divTrunc(addr, 10));
-         const offset: u8 = @intCast(u8, @rem(addr, 10));
+        const opcode: Opcode = @intToEnum(Opcode, (@divTrunc(ir, 1000)));
+        const operands = @rem(ir, 1000);
+        const dst = @intCast(u8, @divTrunc(operands, 100));
+        const addr: u8 = @intCast(u8, @rem(operands, 100));
+        const src  = @intCast(u8, @divTrunc(addr, 10));
+        const offset: u8 = @intCast(u8, @rem(addr, 10));
+
+        // debug("\nsrc: {}, dst: {}, offset: {}\n", .{src, dst, offset});
+        // debug("regs[src]: {}, regs[offset] {}\n", .{regs[src], regs[offset]});
+        // debug("rd: {}\n", .{regs[dst]});
 
         var rd: i16 = 0;
         if (dst >= 1 and dst <= 9)
@@ -114,10 +118,10 @@ const Computer = struct {
                 regs[src] = @divTrunc(regs[src], 10^offset);
             },
             .BRZ => if (rd == 0) {
-                        comp.pc = addr - 1; // Since we are increasing later
+                        comp.pc = addr;
                     },                
             .BGT => if (rd > 0) {
-                        comp.pc = addr - 1;
+                        comp.pc = addr;
                     },
             .LD => if (addr < 90) {
                        rd = comp.memory[addr+1];
@@ -135,7 +139,7 @@ const Computer = struct {
                 } else {
                     return RuntimeError.WritingToUnsupportedAddress;
                 },
-            .HLT => comp.pc -= 1, // To avoid moving forward
+            .HLT => {}, // To avoid moving forward
             else => return RuntimeError.UnsupportedOpcode,      
         }
 
@@ -150,14 +154,21 @@ const Computer = struct {
             else => try stdout.print(" x{}, {}\n", .{dst, addr}),
         }
 
-        comp.pc += 1;
+        // If we did a branch, then we have already set PC to the right new address
+        if (opcode != .BRZ and opcode != .BGT and opcode != .HLT)
+            comp.pc += 1;
     }
 
     fn run(comp: *Computer) !void {
         var i:i32 = 0;
         while (i < 100) : (i += 1) {
             const pc = comp.pc;
-            try comp.step();
+            comp.step() catch |err| {
+                switch (err) {
+                    RuntimeError.AllInputRead => break,
+                    else => return err,
+                }
+            };
 
             if (comp.pc == pc) {
                 break;
@@ -180,12 +191,14 @@ const Computer = struct {
         try writer.print("\n", .{});
 
         // Inputs
+        try writer.print("Inputs: \n", .{});
         for (comp.inputs.items) |input| {
             try writer.print("{}, ", .{input});
         }
         try writer.print("\n", .{});
 
         // Outputs
+        try writer.print("Output: \n", .{});
         for (comp.outputs.items) |output| {
             try writer.print("{}, ", .{output});
         }
@@ -222,5 +235,5 @@ pub fn main() !void {
     var comp: *Computer = &computer;
 
     try comp.run();
-    try stdout.print("{}\n", .{computer});
+    try stdout.print("\n{}\n", .{computer});
 }
