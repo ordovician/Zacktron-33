@@ -297,9 +297,6 @@ test "individual instructions" {
         8190, // INP x1
         8290, // INP x2
         1300, // CLR x3
-        9391, // OUT x3
-        1331, // ADD x3, x1
-        1300, // CLR x3
         3221, // DEC x2
         3987, // SUBI x9, x8, 7
         1908, // MOV x9, x8
@@ -308,7 +305,7 @@ test "individual instructions" {
     var computer = try Computer.load(allocator, program[0..]);
     defer computer.deinit();
 
-    const inputs = [_]i16{2, 3};
+    const inputs = [_]i16{2, 3, 8};
 
     // Just to have some inputs to play with
     try computer.setInputs(inputs[0..]);
@@ -318,4 +315,70 @@ test "individual instructions" {
 
     try computer.step();
     try testing.expectEqual(computer.regs[2], 3);
+
+    computer.regs[3] = 42; // just so we can check if CLR x3 works
+    try computer.step();
+    try testing.expectEqual(computer.regs[3], 0); 
+
+    // Check DEC x2
+    try computer.step();
+    try testing.expectEqual(computer.regs[2], 2); // should be 3 before decrement
+
+    // Check SUBI x9, x8, 7    
+    computer.regs[8] = 10;
+    try computer.step();
+    try testing.expectEqual(computer.regs[9], 3);
+
+    // Check MOV x9, x8
+    try computer.step();
+    try testing.expectEqual(computer.regs[9], 10);    
 }    
+
+test "adder program" {
+   const allocator = std.testing.allocator;
+
+    var program = [_]i16{
+        8190, // INP x1
+        8290, // INP x2
+        1112, // ADD x1, x2
+        9191, // OUT x1
+        6000, // BRA 0
+    };
+
+    var computer = try Computer.load(allocator, program[0..]);
+    defer computer.deinit();
+
+    const inputs = [_]i16{2, 3, 8, 4};
+
+    // Just to have some inputs to play with
+    try computer.setInputs(inputs[0..]);
+
+    // Check that we are the start of program
+    try testing.expectEqual(computer.pc, 0);
+
+    try computer.step();
+    try testing.expectEqual(computer.regs[1], 2);
+
+    try computer.step();
+    try testing.expectEqual(computer.regs[2], 3);
+
+    try computer.step();
+    try testing.expectEqual(computer.regs[1], 5);
+    try testing.expectEqual(computer.outputs.items.len, 0);
+
+    // check that result got written to output
+    try computer.step();
+    try testing.expectEqual(computer.outputs.items.len, 1);
+    try testing.expectEqual(computer.outputs.items[0], 5); 
+
+    // check that we are at end of program
+    try testing.expectEqual(computer.pc, 4);
+
+    // check that jump in program happens
+    try computer.step();
+    try testing.expectEqual(computer.pc, 0);
+
+    // check that next number is loaded from input
+    try computer.step();
+    try testing.expectEqual(computer.regs[1], 8);    
+}
