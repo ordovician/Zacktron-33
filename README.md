@@ -44,6 +44,37 @@ To build and run an executable directly you can write the following:
     ❯ zig build assemble
     ❯ zig build simulate
 
+Once you have the `assemble` and `simulate` programs you can use them to assemble `.ct33` programs into `.machine` code which can be run by the simulator. For instance this will assemble the bundled `adder.ct33` program:
+
+    ❯ assemble testdata/adder.ct33 > adder.machine
+
+You can later run the this program in the simulator. Programs read input from stdin, so you can either type input on the keyboard when the program runs or you can redirect some input. Input numbers are separated by space or newline.
+
+    ❯ echo 2 3 8 4 | simulate adder.machine
+    0: 8190; LD x1, 90
+    1: 8290; LD x2, 90
+    2: 1112; ADD x1, x1, x2
+    3: 9191; ST x1, 91
+    4: 6000; BRZ x0, 0
+    0: 8190; LD x1, 90
+    1: 8290; LD x2, 90
+    2: 1112; ADD x1, x1, x2
+    3: 9191; ST x1, 91
+    4: 6000; BRZ x0, 0
+    0: 8190;
+
+    CPU state
+    PC: 0
+    x0: 0, x1: 12, x2: 4, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0, x8: 0, x9: 0,
+    Inputs:
+    Output: 5, 12,
+
+Here we feed in the numbers 2, 3, 8 and 4 into the simulator as  inputs. You can then see what line of code is executed in sequence. The first machine code instruction executed is 8190 which disassembled turns into a load instruction `LD x1, 90`. The 5th  machine code instruction is 6000 which causes a branch to the start of the program. That is why you see the 1st machine code instruction over again.
+
+When there is no more input or a `HLT` instruction is hit the simulator will write out the state of the virtual CPU. You can see the contents of its program counter (PC) and registers (x1 to x9). x0 is not in use. x0 will always be 0.
+
+You will see inputs and outputs as well. Inputs are added as pairs, thus output is the result of 2+3, 8+4 which equals 5, 12.
+
 ## Remarks on Difference from Julia Implementation
 Julia is a high level language and Zig is a low level language, which tend to force a different way of thinking about the problem. In Julia working is text strings is very convenient and easy. In Zig it is often far more verbose to use Zig in a Julia fashion because that involves doing a lot of operations which allocate new memory. E.g. if you want to uppercase a whole string, you need to actually allocate new memory for this new uppercase string.
 
@@ -71,6 +102,6 @@ Script language style implementation and thinking don't work well in Zig, you go
 - Spent a lot of time looking through the Zig source code to understand how `std.StringHashMap` deals with its string keys. Are they automatically deleted when `deinit()` is called?  No Zig does not duplicate strings used as keys. It is your responsibility to deallocate the strings keys. In retrospect this makes sense. Zig is staying low level and doing minimal conveniences for you. That is sort of the point. There is no RAII in Zig, so just deleting stuff automatically would not have been a good idea anyway. 
 
 ## Status October 13th 2022
-The assembler currently works, but we lack a disassembler. The simulator is work in progress. However you can find these programs in the Julia variant called [Calcutron-33](https://github.com/ordovician/Calcutron33.jl) which is more developed.
+The assembler and simulator currently works, but we lack a disassembler. However you can find these programs in the Julia variant called [Calcutron-33](https://github.com/ordovician/Calcutron33.jl) which is more developed. I would also like to offer more options for debugging and some syntax coloring to make it easier to read output from simulator.
 
     
