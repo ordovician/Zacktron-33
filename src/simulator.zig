@@ -164,9 +164,13 @@ const Computer = struct {
             },
             .BRZ => if (rd == 0) {
                         comp.pc = addr;
+                    } else {
+                        comp.pc += 1;
                     },                
             .BGT => if (rd > 0) {
                         comp.pc = addr;
+                    } else {
+                        comp.pc += 1;
                     },
             .LD => if (addr < 90) {
                        rd = comp.memory[addr+1];
@@ -205,8 +209,12 @@ const Computer = struct {
     }
 
     pub fn run(comp: *Computer) !void {
+        try runSteps(comp, 100);
+    }
+
+    pub fn runSteps(comp: *Computer, nsteps: i32) !void {
         var i:i32 = 0;
-        while (i < 100) : (i += 1) {
+        while (i < nsteps) : (i += 1) {
             const pc = comp.pc;
             comp.step() catch |err| {
                 switch (err) {
@@ -381,4 +389,19 @@ test "adder program" {
     // check that next number is loaded from input
     try computer.step();
     try testing.expectEqual(computer.regs[1], 8);    
+}
+
+test "maximizer program" {
+    const allocator = std.testing.allocator;
+
+    var computer = try Computer.loadFile(allocator, "examples/maximizer.machine");
+    defer computer.deinit();
+
+    const inputs = [_]i16{2, 3, 8, 10};
+    const outputs = [_]i16{3, 10};
+
+    try computer.setInputs(inputs[0..]);
+    try computer.run();
+
+    try testing.expectEqualSlices(i16, computer.outputs.items, outputs[0..]);
 }
