@@ -23,6 +23,8 @@ const common = @import("common.zig");
 
 const ParseError = common.ParseError;
 const Opcode = common.Opcode;
+const colors =  @import("colors.zig");
+const Color = colors.Color;
 
 pub const RuntimeError = error{
     AllInputRead,
@@ -131,11 +133,11 @@ const Computer = struct {
         return load(allocator, instructions.items);
     }
 
-    pub fn step(comp: *Self) !void { 
+    pub fn step(comp: *Self, writer: anytype) !void { 
         const ir = comp.memory[comp.pc];
         var regs: []i16 = comp.regs[0..];
 
-        try stdout.print("{}: {}; ", .{comp.pc, ir});
+        try writer.print("{}{}{}: {};{} ", .{Color.yellow, comp.pc, Color.gray, ir, Color.reset});
 
         // There is always a destination register. But source
         // could be an address or two registers
@@ -195,12 +197,12 @@ const Computer = struct {
         if (dst >= 1 and dst <= 9)
             regs[dst] = rd;
 
-        try stdout.print("{s}", .{@tagName(opcode)});
+        try writer.print("{}{s:<4}{}", .{Color.boldcyan, @tagName(opcode), Color.reset});
         switch (opcode) {
-            .ADD, .SUB => try stdout.print(" x{}, x{}, x{}\n", .{dst, src, offset}),
-            .SUBI, .LSH, .RSH => try stdout.print(" x{}, x{}, {}\n", .{dst, src, offset}),
-            .HLT => try stdout.print("\n", .{}),
-            else => try stdout.print(" x{}, {}\n", .{dst, addr}),
+            .ADD, .SUB => try writer.print(" x{}, x{}, x{}\n", .{dst, src, offset}),
+            .SUBI, .LSH, .RSH => try writer.print(" x{}, x{}, {}{}{}\n", .{dst, src, Color.brightred, offset, Color.reset}),
+            .HLT => try writer.print("\n", .{}),
+            else => try writer.print(" x{}, {}{}{}\n", .{dst, Color.brightred, addr, Color.reset}),
         }
 
         // If we did a branch, then we have already set PC to the right new address
@@ -208,15 +210,15 @@ const Computer = struct {
             comp.pc += 1;
     }
 
-    pub fn run(comp: *Computer) !void {
-        try runSteps(comp, 100);
+    pub fn run(comp: *Computer, writer: anytype) !void {
+        try runSteps(comp, 100, writer);
     }
 
-    pub fn runSteps(comp: *Computer, nsteps: i32) !void {
+    pub fn runSteps(comp: *Computer, nsteps: i32, writer: anytype) !void {
         var i:i32 = 0;
         while (i < nsteps) : (i += 1) {
             const pc = comp.pc;
-            comp.step() catch |err| {
+            comp.step(writer) catch |err| {
                 switch (err) {
                     RuntimeError.AllInputRead => break,
                     else => return err,
@@ -235,11 +237,11 @@ const Computer = struct {
         _: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        try writer.print("PC: {}\n", .{comp.pc});
+        try writer.print("PC: {}{}{}\n", .{Color.brightred, comp.pc, Color.reset});
         
         // Register content
         for (comp.regs) |reg, i| {
-            try writer.print("x{}: {}, ", .{i, reg});
+            try writer.print("x{}: {}{}{}, ", .{i, Color.brightred, reg, Color.reset});
         }
         try writer.print("\n", .{});
 
@@ -249,7 +251,7 @@ const Computer = struct {
         var i: usize = inputs.len;
         while (i > 0) {
             i -= 1;
-            try writer.print("{}, ", .{inputs[i]});
+            try writer.print("{}{}{}, ", .{Color.brightred, inputs[i], Color.reset});
         }
 
         try writer.print("\n", .{});
@@ -257,7 +259,7 @@ const Computer = struct {
         // Outputs
         try writer.print("Output: ", .{});
         for (comp.outputs.items) |output| {
-            try writer.print("{}, ", .{output});
+            try writer.print("{}{}{}, ", .{Color.brightred, output, Color.reset});
         }
         try writer.print("\n", .{});
     }
@@ -292,8 +294,8 @@ pub fn main() !void {
     var comp: *Computer = &computer;
     try comp.readInputs(stdin);
 
-    try comp.run();
-    try stdout.print("\n\nCPU state\n{}\n", .{computer});
+    try comp.run(stdout);
+    try stdout.print("\n\n{}CPU state{}\n{}\n", .{Color.boldwhite, Color.reset, computer});
 }
 
 const testing = std.testing;

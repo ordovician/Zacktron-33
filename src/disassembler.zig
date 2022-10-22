@@ -20,6 +20,9 @@ const Allocator = std.mem.Allocator;
 const debug = std.debug.print;
 
 const common = @import("common.zig");
+const colors =  @import("colors.zig");
+const Color = colors.Color;
+const setColor = colors.setColor;
 
 const ParseError = common.ParseError;
 const Opcode = common.Opcode;
@@ -48,7 +51,9 @@ fn disassembleInstruction(instruction: [4]u8, writer: anytype) !void {
     }
 
     const opcode = @intToEnum(Opcode, digits[0]);
-    try writer.print("{s}", .{@tagName(opcode)});
+    try setColor(writer, Color.boldcyan);
+    try writer.print("{s:<4}", .{@tagName(opcode)});
+    try setColor(writer, Color.reset);
 
     const dst = digits[1];
     const src = digits[2];
@@ -60,9 +65,9 @@ fn disassembleInstruction(instruction: [4]u8, writer: anytype) !void {
     // write out the operands to each mnemonic
     switch (opcode) {
         .ADD, .SUB => try writer.print(" x{}, x{}, x{}\n", .{dst, src, offset}),
-        .SUBI, .LSH, .RSH => try writer.print(" x{}, x{}, {}\n", .{dst, src, offset}),
+        .SUBI, .LSH, .RSH => try writer.print(" x{}, x{}, {}{}{}\n", .{dst, src, Color.brightred, offset, Color.reset}),
         .HLT => try writer.print("\n", .{}),
-        else => try writer.print(" x{}, {}\n", .{dst, addr}),
+        else => try writer.print(" x{}, {}{}{}\n", .{dst, Color.brightred, addr, Color.reset}),
     }   
 }
 
@@ -77,9 +82,9 @@ fn disassemble(allocator: Allocator, reader: anytype, writer: anytype) !void {
     var i: i32 = 0;
     while (iter.next()) |line| : (i += 1) {
         const instruction = mem.trim(u8, line, " \t");
-        try writer.print("{}: {s}; ", .{i, instruction});
+        try writer.print("{}{}{}: {s};{} ", .{Color.yellow, i, Color.gray, instruction, Color.reset});
         if (instruction[0] == '-') {
-            try stdout.print("DAT {s}", .{instruction});
+            try stdout.print("{}DAT{} {s}{}", .{Color.boldcyan, Color.brightred, instruction, Color.reset});
             continue;
         }
 
@@ -89,6 +94,7 @@ fn disassemble(allocator: Allocator, reader: anytype, writer: anytype) !void {
 
         if (!isAllDigits(instruction))
             return ParseError.InstructionMustBeInteger;
+
 
         try disassembleInstruction(instruction[0..4].*, writer);
     }
