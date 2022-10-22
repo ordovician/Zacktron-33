@@ -133,7 +133,11 @@ pub const Computer = struct {
         return load(allocator, instructions.items);
     }
 
-    pub fn step(comp: *Self, writer: anytype) !void { 
+    pub fn step(comp: *Self) !void {
+        try comp.stepOutput(stdout);
+    }
+
+    pub fn stepOutput(comp: *Self, writer: anytype) !void { 
         const ir = comp.memory[comp.pc];
         var regs: []i16 = comp.regs[0..];
 
@@ -218,7 +222,7 @@ pub const Computer = struct {
         var i:i32 = 0;
         while (i < nsteps) : (i += 1) {
             const pc = comp.pc;
-            comp.step(writer) catch |err| {
+            comp.stepOutput(writer) catch |err| {
                 switch (err) {
                     RuntimeError.AllInputRead => break,
                     else => return err,
@@ -371,7 +375,7 @@ test "maximizer program" {
     const outputs = [_]i16{3, 10};
 
     try computer.setInputs(inputs[0..]);
-    try computer.run();
+    try computer.run(stdout);
 
     try testing.expectEqualSlices(i16, computer.outputs.items, outputs[0..]);
 }

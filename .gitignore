@@ -1,2 +1,8 @@
 /zig-cache
 /src/zig-cache
+*.zip
+/zig-out
+/simulate
+/disassemble
+/assemble
+/.vscode
