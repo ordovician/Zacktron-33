@@ -6,6 +6,8 @@ pub const ParseError = error{
     MissingOperand,
     IllegalRegisterName,
     InstructionMustBeInteger,
+    InputMustBeInteger,
+    OnlyFourDigitInstructionsAllowed,
 };
 
 /// Numerical representation of assembly mnemnonics

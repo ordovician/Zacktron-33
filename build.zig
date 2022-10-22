@@ -21,6 +21,11 @@ pub fn build(b: *Builder) void {
     simulator.setBuildMode(mode);
     simulator.install();
 
+    const disassembler = b.addExecutable("disassemble", "src/disassembler.zig");
+    disassembler.setTarget(target);
+    disassembler.setBuildMode(mode);
+    disassembler.install();
+
     const run_assembler = assembler.run();
     run_assembler.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
@@ -33,9 +38,18 @@ pub fn build(b: *Builder) void {
         run_simulator.addArgs(args);
     }
 
+    const run_disassembler = disassembler.run();
+    run_disassembler.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        run_disassembler.addArgs(args);
+    }
+
     const run_assem_step = b.step("assemble", "Run the assembler");
     run_assem_step.dependOn(&run_assembler.step);
 
     const run_sim_step = b.step("simulate", "Run the simulator");
     run_sim_step.dependOn(&run_simulator.step);
+
+    const run_disassem_step = b.step("disassemble", "Run the disassembler");
+    run_disassem_step.dependOn(&run_disassembler.step);
 }

@@ -106,7 +106,7 @@ const Computer = struct {
         var iter = mem.tokenize(u8, buffer[0..n], " \n");
         while (iter.next()) |line| {
             const input = fmt.parseInt(i16, line, 10) catch {
-                return ParseError.InstructionMustBeInteger;
+                return ParseError.InputMustBeInteger;
             };
             try comp.inputs.append(input);
         }
