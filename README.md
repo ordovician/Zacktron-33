@@ -34,8 +34,9 @@ You can use the the `zig build --help` command to get overview over how to build
     uninstall                    Remove build artifacts from prefix path
     assemble                     Run the assembler
     simulate                     Run the simulator
+    disassemble                  Run the disassembler
 
-Running `zig build` will create two executables `assemble` and `simulate` in the `zig-out` directory. You can install built executable anywhere with the `zig build install` command. To install in the current directory, you can write:
+Running `zig build` will create three executables `assemble`, `simulate` and `disassemble` in the `zig-out` directory. You can install built executable anywhere with the `zig build install` command. To install in the current directory, you can write:
 
     ❯ zig build install -p . --prefix-exe-dir .
 
@@ -75,6 +76,17 @@ When there is no more input or a `HLT` instruction is hit the simulator will wri
 
 You will see inputs and outputs as well. Inputs are added as pairs, thus output is the result of 2+3, 8+4 which equals 5, 12.
 
+We can also disassemble machine code. When you write assembly code you will use labels and pseudo instructions such as `INP`, `OUT`, `CLR` and `DEC`. When you disassemble you will instead see what these pseudo instructions map to.
+
+    ❯ /disassemble  testdata/adder.machine
+    0: 8190; LD x1, 90
+    1: 8290; LD x2, 90
+    2: 1112; ADD x1, x1, x2
+    3: 9191; ST x1, 91
+    4: 6000; BRZ x0, 0
+
+Notice how the `INP` instruction maps to a load, `LD`, instruction which loads from memory address 90. The always branch instruction `BRA` actually maps to a conditional instruction, `BRZ`, which checks register `x0`, which is hardwired to always be zero.
+
 ## Remarks on Difference from Julia Implementation
 Julia is a high level language and Zig is a low level language, which tend to force a different way of thinking about the problem. In Julia working is text strings is very convenient and easy. In Zig it is often far more verbose to use Zig in a Julia fashion because that involves doing a lot of operations which allocate new memory. E.g. if you want to uppercase a whole string, you need to actually allocate new memory for this new uppercase string.
 
@@ -101,7 +113,6 @@ Script language style implementation and thinking don't work well in Zig, you go
 
 - Spent a lot of time looking through the Zig source code to understand how `std.StringHashMap` deals with its string keys. Are they automatically deleted when `deinit()` is called?  No Zig does not duplicate strings used as keys. It is your responsibility to deallocate the strings keys. In retrospect this makes sense. Zig is staying low level and doing minimal conveniences for you. That is sort of the point. There is no RAII in Zig, so just deleting stuff automatically would not have been a good idea anyway. 
 
-## Status October 13th 2022
-The assembler and simulator currently works, but we lack a disassembler. However you can find these programs in the Julia variant called [Calcutron-33](https://github.com/ordovician/Calcutron33.jl) which is more developed. I would also like to offer more options for debugging and some syntax coloring to make it easier to read output from simulator.
+
 
     

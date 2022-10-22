@@ -33,9 +33,37 @@ fn isAllDigits(s: []const u8) bool {
     return true;
 }
 
+/// Write disassembled 4-digit instruction to writer which should be 
+/// a writer object akind to what you get from a file or stdout
 fn disassembleInstruction(instruction: [4]u8, writer: anytype) !void {
-    _ = writer;
-    _ = instruction;
+    // NOTE: This is implemented quite different from how similar
+    // disassembly is done in simulator.zig. That is on purpose.
+    // Instead of reusing code I wanted to show different ways
+    // of solving the same problem. 
+
+    // Convert from characters to integer numbers
+    var digits: [4]u8 = undefined;
+    for (instruction) |digit, i| {
+        digits[i] = digit - '0';
+    }
+
+    const opcode = @intToEnum(Opcode, digits[0]);
+    try writer.print("{s}", .{@tagName(opcode)});
+
+    const dst = digits[1];
+    const src = digits[2];
+    const offset = digits[3];
+
+    // address is last two digits
+    const addr = 10*src + offset;
+
+    // write out the operands to each mnemonic
+    switch (opcode) {
+        .ADD, .SUB => try writer.print(" x{}, x{}, x{}\n", .{dst, src, offset}),
+        .SUBI, .LSH, .RSH => try writer.print(" x{}, x{}, {}\n", .{dst, src, offset}),
+        .HLT => try writer.print("\n", .{}),
+        else => try writer.print(" x{}, {}\n", .{dst, addr}),
+    }   
 }
 
 fn disassemble(allocator: Allocator, reader: anytype, writer: anytype) !void {
@@ -46,8 +74,10 @@ fn disassemble(allocator: Allocator, reader: anytype, writer: anytype) !void {
     const n = try reader.readAll(buffer[0..]);
 
     var iter = mem.tokenize(u8, buffer[0..n], " \n");
-    while (iter.next()) |line| {
+    var i: i32 = 0;
+    while (iter.next()) |line| : (i += 1) {
         const instruction = mem.trim(u8, line, " \t");
+        try writer.print("{}: {s}; ", .{i, instruction});
         if (instruction[0] == '-') {
             try stdout.print("DAT {s}", .{instruction});
             continue;
