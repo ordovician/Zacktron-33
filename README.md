@@ -88,6 +88,43 @@ We can also disassemble machine code. When you write assembly code you will use 
 
 Notice how the `INP` instruction maps to a load, `LD`, instruction which loads from memory address 90. The always branch instruction `BRA` actually maps to a conditional instruction, `BRZ`, which checks register `x0`, which is hardwired to always be zero.
 
+## Using Debugger
+The debugger can be run with the command `debug`. Keep in mind that this debugger is very bare bones. It can only step individual instructions and show content of registers, inputs and outputs. You can launch debugger with an assembled file like this:
+
+    ❯ debugger adder.machine
+
+Once in the debugger you can give it single letter commands. You can get an overview of these commands by issuing the help command `h`:
+
+    debug> h
+    n: next
+    x1 - x9: register value
+    i: input
+    p: print
+    h: help
+    q: quit
+
+You use the `i` command to set input numbers and `n` to step one instruction at the time. To check the state of our virtual CPU use the print, `p`, command. Here is an example of a debug sessions:
+
+    ❯ debugger adder.machine
+    debug> i 2 3 4 8
+    debug> p
+    PC: 0
+    x0: 0, x1: 0, x2: 0, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0, x8: 0, x9: 0,
+    Inputs: 2, 3, 4, 8,
+    Output:
+
+    debug> n
+    0: 8190; LD   x1, 90
+    debug> n
+    1: 8290; LD   x2, 90
+    debug> p
+    PC: 2
+    x0: 0, x1: 2, x2: 3, x3: 0, x4: 0, x5: 0, x6: 0, x7: 0, x8: 0, x9: 0,
+    Inputs: 4, 8,
+    Output:
+
+You can check the value of any register by just writing its name. Thus writing `x3` will print the value of register `x3`.
+
 ## Remarks on Difference from Julia Implementation
 Julia is a high level language and Zig is a low level language, which tend to force a different way of thinking about the problem. In Julia working is text strings is very convenient and easy. In Zig it is often far more verbose to use Zig in a Julia fashion because that involves doing a lot of operations which allocate new memory. E.g. if you want to uppercase a whole string, you need to actually allocate new memory for this new uppercase string.
 
@@ -114,6 +151,14 @@ Script language style implementation and thinking don't work well in Zig, you go
 
 - Spent a lot of time looking through the Zig source code to understand how `std.StringHashMap` deals with its string keys. Are they automatically deleted when `deinit()` is called?  No Zig does not duplicate strings used as keys. It is your responsibility to deallocate the strings keys. In retrospect this makes sense. Zig is staying low level and doing minimal conveniences for you. That is sort of the point. There is no RAII in Zig, so just deleting stuff automatically would not have been a good idea anyway. 
 
+## Future Work
+I don't have an intention of developing this assembler in Zig further. My main motivation was to write a Zig program to explore the capabilities for the language.
+
+However, the Calcutron-33 assembler and simulator will most likely evolve further except using a different implementation language.
+
+I don't intend to make large changes to the current model. Possibly there will be more pseudo instructions and I ponder dealing with negative numbers in a different way. A CPU doesn't really have negative numbers. Instead one works with complement values. Hence 99 might represent -1, while 98 might represent -2 if we assume 100 is the highest value.
+
+Of course I have no problems with anyone else putting in the effort to polish this software more. The debugger could be made much better and the simulator could have more options.
 
 
     

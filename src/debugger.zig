@@ -30,8 +30,9 @@ pub fn runDebugger(comp: *Computer) !void {
         switch (line[0]) {
             'n' => try comp.stepOutput(stdout),
             'x' => try stdout.print("{}\n", .{comp.regs[line[1]-'0']}),
+            'i' => try comp.parseInputs(line[1..]),
             'p' => try stdout.print("{}\n", .{comp}),
-            'h' => try stdout.print("n: next, x1 - x9: register value, p: print, h: help, q: quit\n", .{}),
+            'h' => try stdout.print("n: next\nx1 - x9: register value\ni: input\np: print\nh: help\nq: quit\n", .{}),
             'q' => done = true,
             else => try stderr.print("Unknown command. Use 'q' to quit\n", .{}),
         }

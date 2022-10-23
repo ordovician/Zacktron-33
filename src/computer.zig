@@ -104,8 +104,11 @@ pub const Computer = struct {
     pub fn readInputs(comp: *Self, reader: anytype) !void {
         var buffer: [1024]u8 = undefined;
         const n = try reader.readAll(buffer[0..]);
+        try comp.parseInputs(buffer[0..n]);
+    }
 
-        var iter = mem.tokenize(u8, buffer[0..n], " \n");
+    pub fn parseInputs(comp: *Self, buffer: []const u8) !void {
+        var iter = mem.tokenize(u8, buffer, " \n");
         while (iter.next()) |line| {
             const input = fmt.parseInt(i16, line, 10) catch {
                 return ParseError.InputMustBeInteger;
@@ -113,7 +116,7 @@ pub const Computer = struct {
             try comp.inputs.append(input);
         }
         mem.reverse(i16, comp.inputs.items);
-    }   
+    }  
 
     pub fn loadFile(allocator: Allocator, filename: []const u8) !Self {
         const dir: Dir = std.fs.cwd();
