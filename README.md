@@ -35,6 +35,7 @@ You can use the the `zig build --help` command to get overview over how to build
     assemble                     Run the assembler
     simulate                     Run the simulator
     disassemble                  Run the disassembler
+    debug                        Run the debugger
 
 Running `zig build` will create three executables `assemble`, `simulate` and `disassemble` in the `zig-out` directory. You can install built executable anywhere with the `zig build install` command. To install in the current directory, you can write:
 

@@ -26,6 +26,11 @@ pub fn build(b: *Builder) void {
     disassembler.setBuildMode(mode);
     disassembler.install();
 
+    const debugger = b.addExecutable("debugger", "src/debugger.zig");
+    debugger.setTarget(target);
+    debugger.setBuildMode(mode);
+    debugger.install();
+
     const run_assembler = assembler.run();
     run_assembler.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
@@ -44,6 +49,12 @@ pub fn build(b: *Builder) void {
         run_disassembler.addArgs(args);
     }
 
+    const run_debugger = debugger.run();
+    run_debugger.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        run_debugger.addArgs(args);
+    }
+
     const run_assem_step = b.step("assemble", "Run the assembler");
     run_assem_step.dependOn(&run_assembler.step);
 
@@ -52,4 +63,7 @@ pub fn build(b: *Builder) void {
 
     const run_disassem_step = b.step("disassemble", "Run the disassembler");
     run_disassem_step.dependOn(&run_disassembler.step);
+
+    const run_debug_step = b.step("debug", "Run the debugger");
+    run_debug_step.dependOn(&run_debugger.step);
 }
